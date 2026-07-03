@@ -34,4 +34,12 @@
     <string name="export_still_hint">Fotoğrafın çözünürlüğünde işlenir (4K, 4K kalır). Resimler/Shader Studio\'ya kaydedilir.</string>
     <string name="export_gif_hint">Animasyonun döngülü GIF\'i (~3sn). Resimler/Shader Studio\'ya kaydedilir.</string>
     <string name="export_mp4_hint">Animasyonun yüksek kaliteli H.264 videosu (~6sn). Filmler/Shader Studio\'ya kaydedilir.</string>
+    <string name="mask_label">MASKE</string>
+    <string name="mask_size">Boyut</string>
+    <string name="mask_feather">Yumuşaklık</string>
+    <string name="mask_angle">Açı</string>
+    <string name="mask_invert">Ters çevir</string>
+    <string name="mask_drag_hint">Fotoğrafta sürükle</string>
+    <string name="album_title">Düzenlemelerin</string>
+    <string name="album_empty">Düzenlediğin fotoğraflar burada görünecek</string>
 </resources>

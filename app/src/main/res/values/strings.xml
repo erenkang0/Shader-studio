@@ -34,4 +34,12 @@
     <string name="export_still_hint">Rendered at your photo\'s resolution (4K stays 4K). Saved to Pictures/Shader Studio.</string>
     <string name="export_gif_hint">Looping GIF (~3s) of the animation. Saved to Pictures/Shader Studio.</string>
     <string name="export_mp4_hint">High-quality H.264 video (~6s) of the animation. Saved to Movies/Shader Studio.</string>
+    <string name="mask_label">MASK</string>
+    <string name="mask_size">Size</string>
+    <string name="mask_feather">Feather</string>
+    <string name="mask_angle">Angle</string>
+    <string name="mask_invert">Invert</string>
+    <string name="mask_drag_hint">Drag on the photo</string>
+    <string name="album_title">Your edits</string>
+    <string name="album_empty">Your edited photos will appear here</string>
 </resources>

@@ -1190,11 +1190,26 @@ half4 main(float2 coord) {
 }
 """
 
-/** Standalone animated background for the home screen hero (no input image). */
-const val HERO_AGSL = """
+/**
+ * Standalone animated backgrounds for the home-screen hero (no input image).
+ * Four distinct abstract looks; the palette is randomized each launch via
+ * [uSeed] fed into IQ cosine palettes.
+ */
+private const val HERO_HEADER = """
 uniform float2 uResolution;
 uniform float uTime;
-""" + NOISE_LIB + """
+uniform float uSeed;
+"""
+
+private const val HERO_PAL = """
+float3 heroPal(float t) {
+    float3 phase = float3(0.0, 0.33, 0.67) + uSeed;
+    return 0.5 + 0.5 * cos(6.28318 * (t + phase));
+}
+"""
+
+/** 1 — domain-warped liquid gradient. */
+const val HERO_LIQUID = HERO_HEADER + NOISE_LIB + HERO_PAL + """
 half4 main(float2 coord) {
     float2 uv = coord / uResolution;
     float t = uTime * 0.07;
@@ -1202,17 +1217,75 @@ half4 main(float2 coord) {
     float2 r = float2(fbm(uv * 2.4 + q * 3.0 + float2(1.7, 9.2) + t),
                       fbm(uv * 2.4 + q * 3.0 + float2(8.3, 2.8)));
     float f = fbm(uv * 2.4 + r * 2.6);
-    float3 base = float3(0.016, 0.018, 0.045);
-    float3 c1 = float3(0.10, 0.16, 0.75);
-    float3 c2 = float3(1.00, 0.52, 0.20);
-    float3 c3 = float3(0.52, 0.20, 0.95);
-    float3 col = mix(base, c1, smoothstep(0.15, 0.85, f));
-    col = mix(col, c2, smoothstep(0.45, 0.95, q.x * f) * 0.85);
-    col = mix(col, c3, smoothstep(0.35, 0.9, r.y) * 0.6);
+    float3 base = float3(0.015, 0.017, 0.04);
+    float3 col = mix(base, heroPal(0.15), smoothstep(0.15, 0.85, f));
+    col = mix(col, heroPal(0.5), smoothstep(0.45, 0.95, q.x * f) * 0.85);
+    col = mix(col, heroPal(0.8), smoothstep(0.35, 0.9, r.y) * 0.6);
     col *= 0.55 + 0.45 * smoothstep(1.4, 0.2, length(uv - 0.5) * 2.0);
     return half4(half3(clamp(col, 0.0, 1.0)), 1.0);
 }
 """
+
+/** 2 — layered plasma interference. */
+const val HERO_PLASMA = HERO_HEADER + HERO_PAL + """
+half4 main(float2 coord) {
+    float2 uv = coord / uResolution;
+    float2 p = (uv - 0.5) * float2(uResolution.x / uResolution.y, 1.0) * 3.0;
+    float t = uTime * 0.5;
+    float v = sin(p.x * 2.0 + t);
+    v += sin(p.y * 2.3 - t * 1.1);
+    v += sin((p.x + p.y) * 1.7 + t * 0.8);
+    float2 c = p + float2(sin(t * 0.7), cos(t * 0.6)) * 1.5;
+    v += sin(length(c) * 3.0 - t * 1.6);
+    v *= 0.25;
+    float3 col = heroPal(v * 0.5 + 0.5);
+    col = mix(float3(0.02, 0.02, 0.05), col, 0.5 + 0.5 * v);
+    col *= 0.6 + 0.4 * smoothstep(1.6, 0.2, length(uv - 0.5) * 2.0);
+    return half4(half3(clamp(col, 0.0, 1.0)), 1.0);
+}
+"""
+
+/** 3 — flowing aurora curtains. */
+const val HERO_AURORA = HERO_HEADER + NOISE_LIB + HERO_PAL + """
+half4 main(float2 coord) {
+    float2 uv = coord / uResolution;
+    float t = uTime * 0.12;
+    float3 col = float3(0.01, 0.015, 0.035);
+    for (float i = 0.0; i < 4.0; i += 1.0) {
+        float band = fbm(float2(uv.x * (2.0 + i) + t * (1.0 + i * 0.3), i * 3.7 + t));
+        float y = 0.25 + 0.16 * i + (band - 0.5) * 0.4;
+        float glow = exp(-pow((uv.y - y) * (7.0 + i), 2.0));
+        col += heroPal(0.3 + i * 0.16 + band * 0.2) * glow * (0.6 - i * 0.1);
+    }
+    float2 sp = floor(coord / max(uResolution.x * 0.012, 4.0));
+    float star = step(0.99, fract(sin(dot(sp, float2(12.99, 78.23))) * 43758.5));
+    col += star * smoothstep(0.55, 0.0, uv.y) * (0.4 + 0.4 * sin(uTime * 2.0 + sp.x));
+    return half4(half3(clamp(col, 0.0, 1.0)), 1.0);
+}
+"""
+
+/** 4 — swirling nebula vortex. */
+const val HERO_NEBULA = HERO_HEADER + NOISE_LIB + HERO_PAL + """
+half4 main(float2 coord) {
+    float2 uv = coord / uResolution;
+    float2 p = (uv - 0.5) * float2(uResolution.x / uResolution.y, 1.0);
+    float r = length(p);
+    float a = atan(p.y, p.x);
+    float t = uTime * 0.1;
+    float swirl = a + r * 3.0 - t * 2.0;
+    float2 sp = float2(cos(swirl), sin(swirl)) * r;
+    float n = fbm(sp * 3.0 + t);
+    float n2 = fbm(sp * 6.0 - t * 1.3);
+    float3 col = float3(0.02, 0.02, 0.05);
+    col = mix(col, heroPal(0.1 + n * 0.5), smoothstep(0.2, 0.9, n) * exp(-r * 1.6));
+    col += heroPal(0.6) * pow(n2, 5.0) * exp(-r * 1.2) * 1.5;
+    col += heroPal(0.85) * exp(-r * r * 8.0) * 0.8;
+    return half4(half3(clamp(col, 0.0, 1.0)), 1.0);
+}
+"""
+
+/** All hero backgrounds; the home screen picks one at random per launch. */
+val HERO_SHADERS: List<String> = listOf(HERO_LIQUID, HERO_PLASMA, HERO_AURORA, HERO_NEBULA)
 
 object ShaderEffects {
     val original = ShaderEffect(

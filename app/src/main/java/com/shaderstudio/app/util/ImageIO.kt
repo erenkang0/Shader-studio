@@ -133,6 +133,12 @@ class FrameRenderer(
             )
             shader.setIntUniform("uL${i}Mode", layer.blend.ordinal)
             shader.setFloatUniform("uL${i}Opacity", layer.opacity.coerceIn(0f, 1f))
+            shader.setIntUniform("uL${i}Mask", layer.maskType.ordinal)
+            shader.setFloatUniform("uL${i}MaskPos", layer.maskX.coerceIn(0f, 1f), layer.maskY.coerceIn(0f, 1f))
+            shader.setFloatUniform("uL${i}MaskSize", layer.maskSize.coerceIn(0.02f, 1.5f))
+            shader.setFloatUniform("uL${i}MaskAngle", layer.maskAngle)
+            shader.setFloatUniform("uL${i}MaskFeather", layer.maskFeather.coerceIn(0f, 1f))
+            shader.setFloatUniform("uL${i}MaskInvert", if (layer.maskInvert) 1f else 0f)
         }
         try {
             node.setPosition(0, 0, width, height)

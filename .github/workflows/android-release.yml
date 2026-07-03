@@ -33,30 +33,34 @@ jobs:
           ./gradlew assembleRelease --stacktrace
 
       - name: Collect APK
-        run: cp app/build/outputs/apk/release/app-release.apk ShaderStudio-v1.3.0.apk
+        run: cp app/build/outputs/apk/release/app-release.apk ShaderStudio-v1.4.0.apk
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: ShaderStudio-APK
-          path: ShaderStudio-v1.3.0.apk
+          path: ShaderStudio-v1.4.0.apk
 
       - name: Create / update GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.3.0
-          name: Shader Studio v1.3.0
+          tag_name: v1.4.0
+          name: Shader Studio v1.4.0
           make_latest: true
           body: |
-            # Shader Studio v1.3.0 🎨
+            # Shader Studio v1.4.0 🎨
 
             GPU-powered photo editor for **Android 14+** built with **Material 3 Expressive** and **AGSL runtime shaders**.
 
-            ## New in 1.3.0
-            - **50 new fluid & fantasy effects** — fire, plasma, lightning, galaxy, portals, aurora, caustics, snow, rain, bubbles, marble ink, liquid chrome, holograms, cyber grids, force fields, fractal zoom and more (108 effects total)
-            - **GIF export** — looping animated GIF (pure-Kotlin GIF89a encoder)
-            - **Video export** — high-quality H.264 MP4 (MediaCodec)
-            - **Export options sheet** — pick Format (JPEG · PNG · GIF · MP4), Resolution (Original · 4K · 2K · 1080p) and Quality; a 4K photo renders at 4K
+            ## New in 1.4.0
+            - **Advanced masking** — per-layer gradient masks (Linear · Radial · Mirror) with size, feather, angle and invert; drag on the photo to place the mask
+            - **Edited-photos album** — the home screen now shows your past exports; tap one to reopen it, with a photo-into-button fly-in animation
+            - **4 abstract home backgrounds** with randomized colours on every launch (liquid, plasma, aurora, nebula)
+            - **Layer crash fixed** and hardened — a bad shader can never crash the editor
+            - Layer reorder & duplicate, responsive layout, springier transitions
+
+            ## Since 1.3.0
+            - **50 fluid & fantasy effects** (108 total), **GIF & MP4 export**, full-resolution export options (Original/4K/2K/1080p — a 4K photo renders at 4K)
             - **Layer tools** — reorder and duplicate layers
             - Runtime shader safety guard so a bad effect never crashes the editor
 
@@ -69,7 +73,7 @@ jobs:
             30 animated effects render with a live time uniform; every effect has up to three adjustable parameters and many are draggable.
 
             ## Install
-            Download `ShaderStudio-v1.3.0.apk` below and install it (requires Android 14 or newer).
+            Download `ShaderStudio-v1.4.0.apk` below and install it (requires Android 14 or newer).
 
             Stills render at your photo's own resolution (4K stays 4K); animations export as looping GIF or H.264 video straight to your gallery.
-          files: ShaderStudio-v1.3.0.apk
+          files: ShaderStudio-v1.4.0.apk

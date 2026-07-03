@@ -95,6 +95,7 @@ import com.shaderstudio.app.R
 import com.shaderstudio.app.shaders.LayerBlendMode
 import com.shaderstudio.app.shaders.LayerCompositor
 import com.shaderstudio.app.shaders.LayerSpec
+import com.shaderstudio.app.shaders.MaskType
 import com.shaderstudio.app.shaders.ShaderEffect
 import com.shaderstudio.app.shaders.ShaderEffects
 import com.shaderstudio.app.util.ExportFormat
@@ -117,12 +118,35 @@ private class EffectLayer(val id: Int, initialEffect: ShaderEffect) {
     var visible by mutableStateOf(true)
     var centerX by mutableFloatStateOf(0.5f)
     var centerY by mutableFloatStateOf(0.5f)
+    var maskType by mutableStateOf(MaskType.NONE)
+    var maskX by mutableFloatStateOf(0.5f)
+    var maskY by mutableFloatStateOf(0.5f)
+    var maskSize by mutableFloatStateOf(0.4f)
+    var maskAngle by mutableFloatStateOf(0f)
+    var maskFeather by mutableFloatStateOf(0.5f)
+    var maskInvert by mutableStateOf(false)
 
     fun switchEffect(e: ShaderEffect) {
         effect = e
         params.clear()
         params.addAll(e.params.map { it.default })
     }
+
+    fun toSpec() = LayerSpec(
+        effect = effect,
+        params = params.toList(),
+        blend = blend,
+        opacity = opacity,
+        centerX = centerX,
+        centerY = centerY,
+        maskType = maskType,
+        maskX = maskX,
+        maskY = maskY,
+        maskSize = maskSize,
+        maskAngle = maskAngle,
+        maskFeather = maskFeather,
+        maskInvert = maskInvert,
+    )
 
     fun duplicate(newId: Int): EffectLayer {
         val copy = EffectLayer(newId, effect)
@@ -133,6 +157,13 @@ private class EffectLayer(val id: Int, initialEffect: ShaderEffect) {
         copy.visible = visible
         copy.centerX = centerX
         copy.centerY = centerY
+        copy.maskType = maskType
+        copy.maskX = maskX
+        copy.maskY = maskY
+        copy.maskSize = maskSize
+        copy.maskAngle = maskAngle
+        copy.maskFeather = maskFeather
+        copy.maskInvert = maskInvert
         return copy
     }
 }
@@ -199,16 +230,7 @@ fun EditorScreen(
 
     fun runExport() {
         if (saving) return
-        val specs = layers.filter { it.visible }.map {
-            LayerSpec(
-                effect = it.effect,
-                params = it.params.toList(),
-                blend = it.blend,
-                opacity = it.opacity,
-                centerX = it.centerX,
-                centerY = it.centerY,
-            )
-        }
+        val specs = layers.filter { it.visible }.map { it.toSpec() }
         val options = ExportOptions(exportFormat, exportResolution, exportQuality)
         showExportSheet = false
         scope.launch {
@@ -301,31 +323,38 @@ fun EditorScreen(
                 contentAlignment = Alignment.Center,
             ) {
                 val ratio = bitmap.width.toFloat() / bitmap.height.toFloat()
+                val maskEditing = selectedLayer != null &&
+                    selectedLayer.maskType != MaskType.NONE && panel == PanelMode.LAYER
                 val positionable = selectedLayer != null &&
                     selectedLayer.visible && selectedLayer.effect.positionable
+                val draggable = maskEditing || positionable
+
+                fun applyDrag(px: Float, py: Float, w: Int, h: Int) {
+                    layers.getOrNull(selectedLayerIndex)?.let { l ->
+                        val nx = (px / w).coerceIn(0f, 1f)
+                        val ny = (py / h).coerceIn(0f, 1f)
+                        if (maskEditing) {
+                            l.maskX = nx; l.maskY = ny
+                        } else {
+                            l.centerX = nx; l.centerY = ny
+                        }
+                    }
+                }
 
                 Box(
                     Modifier
                         .aspectRatio(ratio)
                         .clip(RoundedCornerShape(24.dp))
-                        .pointerInput(selectedLayerIndex, positionable) {
-                            if (!positionable) return@pointerInput
+                        .pointerInput(selectedLayerIndex, draggable, maskEditing) {
+                            if (!draggable) return@pointerInput
                             detectDragGestures { change, _ ->
                                 change.consume()
-                                layers.getOrNull(selectedLayerIndex)?.let { l ->
-                                    l.centerX = (change.position.x / size.width).coerceIn(0f, 1f)
-                                    l.centerY = (change.position.y / size.height).coerceIn(0f, 1f)
-                                }
+                                applyDrag(change.position.x, change.position.y, size.width, size.height)
                             }
                         }
-                        .pointerInput(selectedLayerIndex, positionable, "tap") {
-                            if (!positionable) return@pointerInput
-                            detectTapGestures { pos ->
-                                layers.getOrNull(selectedLayerIndex)?.let { l ->
-                                    l.centerX = (pos.x / size.width).coerceIn(0f, 1f)
-                                    l.centerY = (pos.y / size.height).coerceIn(0f, 1f)
-                                }
-                            }
+                        .pointerInput(selectedLayerIndex, draggable, maskEditing, "tap") {
+                            if (!draggable) return@pointerInput
+                            detectTapGestures { pos -> applyDrag(pos.x, pos.y, size.width, size.height) }
                         },
                 ) {
                     Image(
@@ -337,36 +366,43 @@ fun EditorScreen(
                             .graphicsLayer {
                                 val s = compositeShader
                                 if (s != null && size.width > 0f && layers.isNotEmpty()) {
-                                    s.setFloatUniform("uResolution", size.width, size.height)
-                                    s.setFloatUniform("uTime", timeOffset + time)
-                                    layers.forEachIndexed { i, layer ->
-                                        layer.effect.params.forEachIndexed { j, p ->
+                                    runCatching {
+                                        s.setFloatUniform("uResolution", size.width, size.height)
+                                        s.setFloatUniform("uTime", timeOffset + time)
+                                        layers.forEachIndexed { i, layer ->
+                                            layer.effect.params.forEachIndexed { j, p ->
+                                                s.setFloatUniform(
+                                                    "uL${i}P${j + 1}",
+                                                    layer.params.getOrElse(j) { p.default },
+                                                )
+                                            }
+                                            s.setFloatUniform("uL${i}Center", layer.centerX, layer.centerY)
+                                            s.setIntUniform("uL${i}Mode", layer.blend.ordinal)
                                             s.setFloatUniform(
-                                                "uL${i}P${j + 1}",
-                                                layer.params.getOrElse(j) { p.default },
+                                                "uL${i}Opacity",
+                                                if (layer.visible) layer.opacity else 0f,
                                             )
+                                            s.setIntUniform("uL${i}Mask", layer.maskType.ordinal)
+                                            s.setFloatUniform("uL${i}MaskPos", layer.maskX, layer.maskY)
+                                            s.setFloatUniform("uL${i}MaskSize", layer.maskSize)
+                                            s.setFloatUniform("uL${i}MaskAngle", layer.maskAngle)
+                                            s.setFloatUniform("uL${i}MaskFeather", layer.maskFeather)
+                                            s.setFloatUniform("uL${i}MaskInvert", if (layer.maskInvert) 1f else 0f)
                                         }
-                                        s.setFloatUniform("uL${i}Center", layer.centerX, layer.centerY)
-                                        s.setIntUniform("uL${i}Mode", layer.blend.ordinal)
-                                        s.setFloatUniform(
-                                            "uL${i}Opacity",
-                                            if (layer.visible) layer.opacity else 0f,
-                                        )
-                                    }
-                                    renderEffect = android.graphics.RenderEffect
-                                        .createRuntimeShaderEffect(s, "uImage")
-                                        .asComposeRenderEffect()
+                                        renderEffect = android.graphics.RenderEffect
+                                            .createRuntimeShaderEffect(s, "uImage")
+                                            .asComposeRenderEffect()
+                                    }.onFailure { renderEffect = null }
                                 } else {
                                     renderEffect = null
                                 }
                             },
                     )
-                    if (positionable && selectedLayer != null) {
+                    if (draggable && selectedLayer != null) {
+                        val hx = if (maskEditing) selectedLayer.maskX else selectedLayer.centerX
+                        val hy = if (maskEditing) selectedLayer.maskY else selectedLayer.centerY
                         Canvas(Modifier.fillMaxSize()) {
-                            val c = androidx.compose.ui.geometry.Offset(
-                                selectedLayer.centerX * size.width,
-                                selectedLayer.centerY * size.height,
-                            )
+                            val c = androidx.compose.ui.geometry.Offset(hx * size.width, hy * size.height)
                             drawCircle(Color.Black.copy(alpha = 0.35f), 12.dp.toPx(), c, style = Stroke(3.dp.toPx()))
                             drawCircle(Color.White.copy(alpha = 0.95f), 11.dp.toPx(), c, style = Stroke(1.5.dp.toPx()))
                             drawCircle(Color.White, 3.dp.toPx(), c)
@@ -581,6 +617,55 @@ fun EditorScreen(
                                 )
                             }
                             Slider(value = l.opacity, onValueChange = { l.opacity = it })
+
+                            // ---- Mask controls ----
+                            Spacer(Modifier.height(4.dp))
+                            Text(
+                                stringResource(R.string.mask_label),
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                            Spacer(Modifier.height(6.dp))
+                            Row(
+                                modifier = Modifier.horizontalScroll(rememberScrollState()),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            ) {
+                                MaskType.entries.forEach { mt ->
+                                    ChoiceChip(mt.label, l.maskType == mt) { l.maskType = mt }
+                                }
+                            }
+                            if (l.maskType != MaskType.NONE) {
+                                Spacer(Modifier.height(8.dp))
+                                LabeledSlider(stringResource(R.string.mask_size), l.maskSize, 0.05f, 1.2f) {
+                                    l.maskSize = it
+                                }
+                                LabeledSlider(stringResource(R.string.mask_feather), l.maskFeather, 0f, 1f) {
+                                    l.maskFeather = it
+                                }
+                                if (l.maskType == MaskType.LINEAR || l.maskType == MaskType.MIRROR) {
+                                    LabeledSlider(
+                                        stringResource(R.string.mask_angle),
+                                        l.maskAngle / (2f * Math.PI.toFloat()),
+                                        0f, 1f,
+                                    ) { l.maskAngle = it * 2f * Math.PI.toFloat() }
+                                }
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(
+                                        stringResource(R.string.mask_invert),
+                                        style = MaterialTheme.typography.labelLarge,
+                                    )
+                                    Spacer(Modifier.width(10.dp))
+                                    Switch(checked = l.maskInvert, onCheckedChange = { l.maskInvert = it })
+                                    Spacer(Modifier.weight(1f))
+                                    Text(
+                                        stringResource(R.string.mask_drag_hint),
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
+                            }
+                            Spacer(Modifier.height(6.dp))
+
                             val idx = layers.indexOf(l)
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 IconButton(
@@ -750,6 +835,25 @@ private fun OptionGroup(label: String, content: @Composable androidx.compose.fou
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         content = content,
     )
+}
+
+@Composable
+private fun LabeledSlider(
+    label: String,
+    value: Float,
+    min: Float,
+    max: Float,
+    onValue: (Float) -> Unit,
+) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text(label, style = MaterialTheme.typography.labelLarge, modifier = Modifier.weight(1f))
+        Text(
+            "${(((value - min) / (max - min)) * 100).toInt()}%",
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+    Slider(value = value.coerceIn(min, max), onValueChange = onValue, valueRange = min..max)
 }
 
 @Composable

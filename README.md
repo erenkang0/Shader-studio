@@ -83,6 +83,14 @@ Tap **Save** to open the export sheet:
 
 Stills go through the GPU pass at the photo's own resolution (`util/ImageIO.kt`, `FrameRenderer`). Animated effects are rendered frame-by-frame from the same `FrameRenderer`: GIF via a pure-Kotlin GIF89a encoder (NeuQuant quantization + LZW, `util/GifEncoder.kt`) and MP4 via `MediaCodec` + `MediaMuxer` (`util/VideoEncoder.kt`). Everything saves to `Pictures/Shader Studio` (stills, GIF) or `Movies/Shader Studio` (video).
 
+## 🎭 Masking
+
+Each layer can carry a **gradient mask** that limits where its effect shows: **Linear**, **Radial** or **Mirror**, with size, feather, angle and invert controls. Drag on the photo to reposition the mask. Masks are computed per-pixel in the composite shader (`maskFactor` in `shaders/LayerCompositor.kt`) so they cost nothing extra and export identically to the preview.
+
+## 🖼️ Home album
+
+The home screen shows an **album of your past exports** (queried from `Pictures/Shader Studio` via MediaStore). Tap any tile to reopen that image in the editor — the photo animates into the pick button on the way in. The animated hero background is picked at random from **four abstract shaders** (liquid, plasma, aurora, nebula) with a **randomized colour palette on every launch**.
+
 ## 🧅 Layers & Blend Modes
 
 Stack up to **5 effect layers** over the photo, Procreate-style. Each layer has its own effect, parameters, opacity, visibility toggle and one of **26 blend modes** — the full Procreate set: Normal, Darken, Multiply, Color Burn, Linear Burn, Darker Color, Lighten, Screen, Color Dodge, Add, Lighter Color, Overlay, Soft Light, Hard Light, Vivid Light, Linear Light, Pin Light, Hard Mix, Difference, Exclusion, Subtract, Divide, Hue, Saturation, Color, Luminosity.

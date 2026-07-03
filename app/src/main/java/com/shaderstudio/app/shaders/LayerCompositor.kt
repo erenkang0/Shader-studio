@@ -41,6 +41,14 @@ enum class LayerBlendMode(val label: String) {
 }
 
 /** Plain snapshot of one layer, decoupled from Compose state for export. */
+/** Per-layer gradient mask shape that limits where the effect is applied. */
+enum class MaskType(val label: String) {
+    NONE("None"),
+    LINEAR("Linear"),
+    RADIAL("Radial"),
+    MIRROR("Mirror"),
+}
+
 data class LayerSpec(
     val effect: ShaderEffect,
     val params: List<Float>,
@@ -48,6 +56,13 @@ data class LayerSpec(
     val opacity: Float,
     val centerX: Float = 0.5f,
     val centerY: Float = 0.5f,
+    val maskType: MaskType = MaskType.NONE,
+    val maskX: Float = 0.5f,
+    val maskY: Float = 0.5f,
+    val maskSize: Float = 0.4f,
+    val maskAngle: Float = 0f,
+    val maskFeather: Float = 0.5f,
+    val maskInvert: Boolean = false,
 )
 
 object LayerCompositor {
@@ -142,6 +157,27 @@ float3 blendPx(float3 b, float3 s, int mode) {
 }
 """
 
+    /** Gradient-mask factor in [0,1] for a normalized pixel coordinate. */
+    private const val MASK_LIB = """
+float maskFactor(float2 uv, int type, float2 pos, float size, float ang, float feather, float invert) {
+    float m = 1.0;
+    float f = max(feather * size, 0.001);
+    if (type == 1) {
+        float2 dir = float2(cos(ang), sin(ang));
+        float proj = dot(uv - pos, dir);
+        m = smoothstep(size, size - f, proj);
+    } else if (type == 2) {
+        float d = length((uv - pos) * float2(1.0, 1.0));
+        m = 1.0 - smoothstep(size - f, size, d);
+    } else if (type == 3) {
+        float2 dir = float2(cos(ang), sin(ang));
+        float proj = abs(dot(uv - pos, dir));
+        m = 1.0 - smoothstep(size - f, size, proj);
+    }
+    return mix(m, 1.0 - m, invert);
+}
+"""
+
     /**
      * Generates a single AGSL program for the given effect stack.
      * Uniform interface:
@@ -164,11 +200,18 @@ float3 blendPx(float3 b, float3 s, int mode) {
             sb.append("uniform float2 uL${i}Center;\n")
             sb.append("uniform int uL${i}Mode;\n")
             sb.append("uniform float uL${i}Opacity;\n")
+            sb.append("uniform int uL${i}Mask;\n")
+            sb.append("uniform float2 uL${i}MaskPos;\n")
+            sb.append("uniform float uL${i}MaskSize;\n")
+            sb.append("uniform float uL${i}MaskAngle;\n")
+            sb.append("uniform float uL${i}MaskFeather;\n")
+            sb.append("uniform float uL${i}MaskInvert;\n")
         }
         if (effects.any { it.agsl!!.contains(NOISE_LIB) }) {
             sb.append(NOISE_LIB)
         }
         sb.append(BLEND_LIB)
+        sb.append(MASK_LIB)
         effects.forEachIndexed { i, e ->
             var body = e.agsl!!
                 .replace(PRELUDE, "")
@@ -184,11 +227,17 @@ float3 blendPx(float3 b, float3 s, int mode) {
             sb.append(body)
         }
         sb.append("\nhalf4 main(float2 coord) {\n")
+        sb.append("    float2 uv = coord / uResolution;\n")
         sb.append("    float3 acc = float3(uImage.eval(coord).rgb);\n")
         sb.append("    float3 s;\n")
+        sb.append("    float mk;\n")
         effects.forEachIndexed { i, _ ->
             sb.append("    s = float3(l${i}_main(coord).rgb);\n")
-            sb.append("    acc = clamp(mix(acc, blendPx(acc, s, uL${i}Mode), uL${i}Opacity), 0.0, 1.0);\n")
+            sb.append(
+                "    mk = maskFactor(uv, uL${i}Mask, uL${i}MaskPos, uL${i}MaskSize, " +
+                    "uL${i}MaskAngle, uL${i}MaskFeather, uL${i}MaskInvert);\n",
+            )
+            sb.append("    acc = clamp(mix(acc, blendPx(acc, s, uL${i}Mode), uL${i}Opacity * mk), 0.0, 1.0);\n")
         }
         sb.append("    return half4(half3(acc), 1.0);\n")
         sb.append("}\n")
