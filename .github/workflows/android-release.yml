@@ -52,15 +52,15 @@ jobs:
 
             GPU-powered photo editor for **Android 14+** built with **Material 3 Expressive** and **AGSL runtime shaders**.
 
-            ## Effects
-            - **Dot Matrix** — LED / halftone poster look
-            - **Fluted Glass** — ribbed glass refraction
-            - **Liquid Sky** — flowing "viral gradient" blend (animated)
-            - **Glitch** — chromatic row displacement (animated)
-            - **Mosaic** — pixel poster + posterize
-            - **VHS** — retro tape wobble, scanlines, grain (animated)
-            - **Duotone** — two-tone poster mapping
-            - **Ripple** — liquid wave distortion (animated)
+            ## 33 shader effects
+            Dot Matrix, Fluted Glass, Liquid Sky, Glitch, Mosaic, VHS, Duotone,
+            Ripple, Kaleidoscope, Swirl, Lens, Tilt Shift, CRT, Print Press,
+            Sketch, Oil Flow, Neon Edge, Emboss, Thermal, Solarize, Poster Pop,
+            Scan Slice, Mirror, Chroma Zoom, Rain Glass, Hex Pixel, Linescreen,
+            Weave, Chroma Wave, Bloom, Night Vision, Pop Dots, Aurora.
+
+            Animated effects render with a live time uniform; every effect has
+            up to three adjustable parameters.
 
             ## Install
             Download `ShaderStudio-v1.0.0.apk` below and install it (requires Android 14 or newer).

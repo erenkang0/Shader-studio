@@ -217,16 +217,26 @@ fun EditorScreen(
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(start = 24.dp, top = 10.dp, bottom = 10.dp),
         )
-        LazyRow(
-            contentPadding = PaddingValues(horizontal = 20.dp),
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-        ) {
-            items(effects, key = { it.id }) { effect ->
-                EffectCard(
-                    effect = effect,
-                    isSelected = effect.id == selected.id,
-                    onClick = { selected = effect },
-                )
+        val effectRows = remember(effects) {
+            listOf(
+                effects.filterIndexed { i, _ -> i % 2 == 0 },
+                effects.filterIndexed { i, _ -> i % 2 == 1 },
+            )
+        }
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            effectRows.forEach { row ->
+                LazyRow(
+                    contentPadding = PaddingValues(horizontal = 20.dp),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    items(row, key = { it.id }) { effect ->
+                        EffectCard(
+                            effect = effect,
+                            isSelected = effect.id == selected.id,
+                            onClick = { selected = effect },
+                        )
+                    }
+                }
             }
         }
 

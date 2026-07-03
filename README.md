@@ -4,18 +4,43 @@ GPU-powered photo editor for **Android 14+**, built with **Jetpack Compose**, **
 
 > 📦 **Download:** grab the latest APK from the [Releases](../../releases) page.
 
-## ✨ Effects
+## ✨ 33 Effects
 
 | Effect | Look | Animated |
 | --- | --- | --- |
-| **Dot Matrix** | LED / halftone poster (density, glow, blend) | – |
-| **Fluted Glass** | Vertical ribbed-glass refraction (ribs, refraction, shading) | – |
+| **Dot Matrix** | LED / halftone poster | – |
+| **Fluted Glass** | Vertical ribbed-glass refraction | – |
 | **Liquid Sky** | Flowing "viral gradient" screen-blend + warp | ✅ |
 | **Glitch** | Chromatic aberration + row displacement | ✅ |
 | **Mosaic** | Pixel poster with posterization | – |
 | **VHS** | Tape wobble, scanlines, grain, vignette | ✅ |
 | **Duotone** | Two-tone poster mapping with hue controls | – |
 | **Ripple** | Radial liquid wave distortion | ✅ |
+| **Kaleidoscope** | Mirror mandala segments | – |
+| **Swirl** | Vortex twist around center | – |
+| **Lens** | Bulge & pinch distortion | – |
+| **Tilt Shift** | Miniature-style band focus | – |
+| **CRT** | Curved tube, phosphor mask, scanlines | – |
+| **Print Press** | Rotated newspaper halftone | – |
+| **Sketch** | 4-layer cross-hatch ink drawing | – |
+| **Oil Flow** | Painterly smear along noise flow | – |
+| **Neon Edge** | Sobel edge glow with hue control | – |
+| **Emboss** | Directional metal relief | – |
+| **Thermal** | Heat-camera palette mapping | – |
+| **Solarize** | Darkroom tone fold | – |
+| **Poster Pop** | Hard posterize + saturation punch | – |
+| **Scan Slice** | Random vertical column offsets | – |
+| **Mirror** | Feathered symmetry fold | – |
+| **Chroma Zoom** | Radial chromatic zoom burst | – |
+| **Rain Glass** | Animated droplet refraction | ✅ |
+| **Hex Pixel** | Honeycomb mosaic | – |
+| **Linescreen** | Engraved luminance lines | – |
+| **Weave** | Woven canvas threads | – |
+| **Chroma Wave** | Sinusoidal RGB channel drift | ✅ |
+| **Bloom** | Soft threshold glow | – |
+| **Night Vision** | Green optic, grain, vignette | ✅ |
+| **Pop Dots** | Comic CMYK dot screens | – |
+| **Aurora** | Northern-lights curtains overlay | ✅ |
 
 Every effect exposes up to three parameters driven by Material 3 sliders, previews in real time via `RenderEffect` + `RuntimeShader`, and exports at full resolution through a GPU pass (`HardwareRenderer` + `ImageReader`) straight into your gallery (`Pictures/Shader Studio`).
 
