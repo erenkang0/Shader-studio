@@ -1,0 +1,13 @@
+<resources>
+    <string name="app_name">Shader Studio</string>
+    <string name="pick_photo">Pick a photo</string>
+    <string name="demo_image">Try demo image</string>
+    <string name="save">Save</string>
+    <string name="saved_toast">Saved to gallery ✨</string>
+    <string name="save_failed">Could not save image</string>
+    <string name="reset_params">Reset</string>
+    <string name="close_editor">Close</string>
+    <string name="home_tagline">Turn photos into posters with GPU shader art</string>
+    <string name="home_subtitle">Real-time AGSL effects · Material 3 Expressive · Android 14+</string>
+    <string name="effects_label">EFFECTS</string>
+</resources>

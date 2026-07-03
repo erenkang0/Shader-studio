@@ -1,0 +1,13 @@
+<resources>
+    <string name="app_name">Shader Studio</string>
+    <string name="pick_photo">Fotoğraf seç</string>
+    <string name="demo_image">Demo görseli dene</string>
+    <string name="save">Kaydet</string>
+    <string name="saved_toast">Galeriye kaydedildi ✨</string>
+    <string name="save_failed">Görsel kaydedilemedi</string>
+    <string name="reset_params">Sıfırla</string>
+    <string name="close_editor">Kapat</string>
+    <string name="home_tagline">GPU shader sanatıyla fotoğrafları postere dönüştür</string>
+    <string name="home_subtitle">Gerçek zamanlı AGSL efektleri · Material 3 Expressive · Android 14+</string>
+    <string name="effects_label">EFEKTLER</string>
+</resources>
