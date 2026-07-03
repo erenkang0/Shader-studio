@@ -33,37 +33,38 @@ jobs:
           ./gradlew assembleRelease --stacktrace
 
       - name: Collect APK
-        run: cp app/build/outputs/apk/release/app-release.apk ShaderStudio-v1.0.0.apk
+        run: cp app/build/outputs/apk/release/app-release.apk ShaderStudio-v1.1.0.apk
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: ShaderStudio-APK
-          path: ShaderStudio-v1.0.0.apk
+          path: ShaderStudio-v1.1.0.apk
 
       - name: Create / update GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.0.0
-          name: Shader Studio v1.0.0
+          tag_name: v1.1.0
+          name: Shader Studio v1.1.0
           make_latest: true
           body: |
-            # Shader Studio v1.0.0 🎨
+            # Shader Studio v1.1.0 🎨
 
             GPU-powered photo editor for **Android 14+** built with **Material 3 Expressive** and **AGSL runtime shaders**.
 
-            ## 33 shader effects
-            Dot Matrix, Fluted Glass, Liquid Sky, Glitch, Mosaic, VHS, Duotone,
-            Ripple, Kaleidoscope, Swirl, Lens, Tilt Shift, CRT, Print Press,
-            Sketch, Oil Flow, Neon Edge, Emboss, Thermal, Solarize, Poster Pop,
-            Scan Slice, Mirror, Chroma Zoom, Rain Glass, Hex Pixel, Linescreen,
-            Weave, Chroma Wave, Bloom, Night Vision, Pop Dots, Aurora.
+            ## 58 shader effects
+            **Poster & print:** Dot Matrix, Print Press, Pop Dots, Linescreen, Sketch, Bit Dither, Poster Pop, Duotone, Toon, Watercolor, Oil Flow
+            **Glass & distortion:** Fluted Glass, Rain Glass, Stained Glass, Lens, Swirl, Ripple, Flag Wave, Heat Haze, Underwater, Time Smear, Kaleidoscope, Quad Mirror, Mirror, Little Planet
+            **Retro & tape:** VHS, CRT, Old Film, Film Fade, Game Boy, Night Vision, Lomo, Negative, Solarize, Infrared, Thermal
+            **Glitch & chroma:** Glitch, Scan Slice, Pixel Sort, Chroma Wave, Chroma Zoom, Anaglyph, Double Ghost
+            **Mosaic & pixel:** Mosaic, Hex Pixel, Tri Mosaic, Weave, Emboss
+            **Light & overlay:** Liquid Sky, Aurora, Matrix Rain, Sparkle, Bloom, Prism Leak, Neon Edge, Motion Blur, Spin Blur, Tilt Shift
 
-            Animated effects render with a live time uniform; every effect has
+            13 animated effects render with a live time uniform; every effect has
             up to three adjustable parameters.
 
             ## Install
-            Download `ShaderStudio-v1.0.0.apk` below and install it (requires Android 14 or newer).
+            Download `ShaderStudio-v1.1.0.apk` below and install it (requires Android 14 or newer).
 
             All effects render in real time on the GPU and export at full resolution to your gallery.
-          files: ShaderStudio-v1.0.0.apk
+          files: ShaderStudio-v1.1.0.apk

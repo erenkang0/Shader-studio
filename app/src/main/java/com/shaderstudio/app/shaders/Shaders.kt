@@ -738,6 +738,456 @@ half4 main(float2 coord) {
 }
 """
 
+private const val TOON = PRELUDE + """
+float toonLum(float2 p, float2 res) {
+    p.x = clamp(p.x, 0.0, res.x - 1.0);
+    p.y = clamp(p.y, 0.0, res.y - 1.0);
+    return dot(float3(uImage.eval(p).rgb), float3(0.2126, 0.7152, 0.0722));
+}
+
+half4 main(float2 coord) {
+    float3 src = float3(uImage.eval(coord).rgb);
+    float levels = mix(8.0, 3.0, uParam1);
+    float3 cel = floor(src * levels + 0.5) / levels;
+    float lum0 = dot(cel, float3(0.2126, 0.7152, 0.0722));
+    cel = clamp(float3(lum0) + (cel - float3(lum0)) * 1.25, 0.0, 1.0);
+    float o = max(1.0, uResolution.x / 900.0);
+    float gl = toonLum(coord + float2(-o, 0.0), uResolution);
+    float gr = toonLum(coord + float2(o, 0.0), uResolution);
+    float gu = toonLum(coord + float2(0.0, -o), uResolution);
+    float gd = toonLum(coord + float2(0.0, o), uResolution);
+    float g = length(float2(gr - gl, gd - gu)) * mix(2.0, 8.0, uParam2);
+    float edge = smoothstep(0.25, 0.6, g);
+    float3 outCol = cel * (1.0 - edge * 0.85);
+    return half4(half3(mix(src, outCol, uParam3)), 1.0);
+}
+"""
+
+private const val ANAGLYPH = PRELUDE + """
+half4 main(float2 coord) {
+    float ang = uParam2 * 3.14159;
+    float2 dir = float2(cos(ang), sin(ang)) * mix(2.0, 26.0, uParam1) * (uResolution.x / 1400.0 + 0.4);
+    float2 pl = clamp(coord - dir, float2(0.0), uResolution - 1.0);
+    float2 pr = clamp(coord + dir, float2(0.0), uResolution - 1.0);
+    float r = uImage.eval(pl).r;
+    float g = uImage.eval(pr).g;
+    float b = uImage.eval(pr).b;
+    float3 src = float3(uImage.eval(coord).rgb);
+    return half4(half3(mix(src, float3(r, g, b), uParam3)), 1.0);
+}
+"""
+
+private const val LOMO = PRELUDE + """
+half4 main(float2 coord) {
+    float3 src = float3(uImage.eval(coord).rgb);
+    float3 c = mix(src, src * src * (3.0 - 2.0 * src), mix(0.3, 1.0, uParam1));
+    float lum = dot(c, float3(0.2126, 0.7152, 0.0722));
+    c = clamp(float3(lum) + (c - float3(lum)) * 1.35, 0.0, 1.0);
+    c *= float3(1.06, 1.03, 0.90);
+    float2 uv = coord / uResolution - 0.5;
+    float vig = 1.0 - dot(uv, uv) * mix(0.4, 1.6, uParam2);
+    c *= clamp(vig, 0.0, 1.0);
+    return half4(half3(clamp(mix(src, c, uParam3), 0.0, 1.0)), 1.0);
+}
+"""
+
+private const val OLD_FILM = PRELUDE + NOISE_LIB + """
+half4 main(float2 coord) {
+    float3 src = float3(uImage.eval(coord).rgb);
+    float lum = dot(src, float3(0.2126, 0.7152, 0.0722));
+    float3 sepia = float3(1.0, 0.84, 0.62) * lum;
+    float3 c = mix(src, sepia, mix(0.4, 1.0, uParam1));
+    float tframe = floor(uTime * 9.0);
+    float flick = 0.95 + 0.05 * hash21(float2(tframe, 3.7));
+    c *= flick;
+    float xq = floor(coord.x / max(2.0, uResolution.x / 480.0));
+    float s = hash21(float2(xq * 1.13, tframe * 13.7));
+    float scratch = step(1.0 - 0.006 * uParam2, s);
+    c += scratch * 0.35;
+    float dark = step(s, 0.004 * uParam2);
+    c -= dark * 0.3;
+    float speck = step(1.0 - 0.002 * uParam2, hash21(floor(coord / 9.0) + tframe * 0.31));
+    c += speck * 0.5;
+    float grain = (hash21(coord * 0.8 + float2(fract(uTime) * 67.3, fract(uTime * 1.7) * 41.1)) - 0.5) * uParam3 * 0.3;
+    c += grain;
+    float2 uv = coord / uResolution - 0.5;
+    c *= 1.0 - dot(uv, uv) * 0.7;
+    return half4(half3(clamp(c, 0.0, 1.0)), 1.0);
+}
+"""
+
+private const val INFRARED = PRELUDE + """
+half4 main(float2 coord) {
+    float3 src = float3(uImage.eval(coord).rgb);
+    float3 ir = float3(src.g * 1.35, src.r * 0.55, src.b * 0.75);
+    float irLum = dot(ir, float3(0.2126, 0.7152, 0.0722));
+    ir = mix(ir, float3(irLum * 1.2), 0.15);
+    ir += pow(src.g, 2.0) * uParam2 * float3(0.9, 0.75, 0.7);
+    float3 swapped = mix(src, ir, uParam1);
+    return half4(half3(clamp(mix(src, swapped, uParam3), 0.0, 1.0)), 1.0);
+}
+"""
+
+private const val PIXEL_SORT = PRELUDE + """
+half4 main(float2 coord) {
+    float3 src = float3(uImage.eval(coord).rgb);
+    float thr = mix(0.78, 0.25, uParam1);
+    float len = uResolution.y * 0.28 * uParam2;
+    float3 best = src;
+    for (int i = 1; i <= 8; i++) {
+        float2 p = coord - float2(0.0, len * float(i) / 8.0);
+        p.y = clamp(p.y, 0.0, uResolution.y - 1.0);
+        float3 c = float3(uImage.eval(p).rgb);
+        float l = dot(c, float3(0.2126, 0.7152, 0.0722));
+        float m = step(thr, l) * (1.0 - float(i) / 10.0);
+        best = max(best, c * m);
+    }
+    return half4(half3(mix(src, max(src, best), uParam3)), 1.0);
+}
+"""
+
+private const val STAINED_GLASS = PRELUDE + NOISE_LIB + """
+half4 main(float2 coord) {
+    float cell = uResolution.x / mix(8.0, 36.0, uParam1);
+    float2 gp = coord / cell;
+    float2 gi = floor(gp);
+    float2 gf = fract(gp);
+    float f1 = 8.0;
+    float f2 = 8.0;
+    float2 bestPt = gi;
+    for (int dy = -1; dy <= 1; dy++) {
+        for (int dx = -1; dx <= 1; dx++) {
+            float2 nb = float2(float(dx), float(dy));
+            float2 rnd = float2(hash21(gi + nb), hash21(gi + nb + 17.3));
+            float2 pt = nb + rnd - gf;
+            float d = dot(pt, pt);
+            if (d < f1) {
+                f2 = f1;
+                f1 = d;
+                bestPt = gi + nb + rnd;
+            } else if (d < f2) {
+                f2 = d;
+            }
+        }
+    }
+    float2 sp = clamp(bestPt * cell, float2(0.0), uResolution - 1.0);
+    float3 col = float3(uImage.eval(sp).rgb);
+    col *= 0.9 + 0.2 * hash21(bestPt * 3.1);
+    float lead = 1.0 - smoothstep(0.0, mix(0.3, 0.06, uParam2), sqrt(f2) - sqrt(f1));
+    col *= 1.0 - lead * 0.85;
+    float3 src = float3(uImage.eval(coord).rgb);
+    return half4(half3(mix(src, col, uParam3)), 1.0);
+}
+"""
+
+private const val TRI_MOSAIC = PRELUDE + NOISE_LIB + """
+half4 main(float2 coord) {
+    float s = uResolution.x / mix(60.0, 13.0, uParam1);
+    float2 g = coord / s;
+    float2 gi = floor(g);
+    float2 gf = fract(g);
+    float upper = step(gf.x + gf.y, 1.0);
+    float2 triC = gi + mix(float2(0.6667, 0.6667), float2(0.3333, 0.3333), upper);
+    float2 sp = clamp(triC * s, float2(0.0), uResolution - 1.0);
+    float3 col = float3(uImage.eval(sp).rgb);
+    float facet = 0.92 + 0.16 * hash21(gi * 3.7 + upper * 11.1);
+    col *= mix(1.0, facet, uParam2);
+    float3 src = float3(uImage.eval(coord).rgb);
+    return half4(half3(clamp(mix(src, col, uParam3), 0.0, 1.0)), 1.0);
+}
+"""
+
+private const val SPIN_BLUR = PRELUDE + """
+half4 main(float2 coord) {
+    float2 c = uResolution * 0.5;
+    float2 d = coord - c;
+    float fall = smoothstep(0.0, min(uResolution.x, uResolution.y) * 0.5, length(d));
+    float total = mix(0.01, 0.16, uParam1) * mix(0.4, 1.0, fall) * mix(0.5, 1.5, uParam2);
+    float3 acc = float3(0.0);
+    for (int i = 0; i < 8; i++) {
+        float a = (float(i) / 7.0 - 0.5) * total;
+        float cs = cos(a);
+        float sn = sin(a);
+        float2 rd = float2(d.x * cs - d.y * sn, d.x * sn + d.y * cs);
+        float2 p = clamp(c + rd, float2(0.0), uResolution - 1.0);
+        acc += float3(uImage.eval(p).rgb);
+    }
+    float3 blur = acc / 8.0;
+    float3 src = float3(uImage.eval(coord).rgb);
+    return half4(half3(mix(src, blur, uParam3)), 1.0);
+}
+"""
+
+private const val MOTION_BLUR = PRELUDE + """
+half4 main(float2 coord) {
+    float ang = uParam2 * 3.14159;
+    float len = mix(3.0, 70.0, uParam1) * (uResolution.x / 1400.0 + 0.4);
+    float2 dir = float2(cos(ang), sin(ang)) * len;
+    float3 acc = float3(0.0);
+    for (int i = 0; i < 8; i++) {
+        float t = float(i) / 7.0 - 0.5;
+        float2 p = clamp(coord + dir * t, float2(0.0), uResolution - 1.0);
+        acc += float3(uImage.eval(p).rgb);
+    }
+    float3 blur = acc / 8.0;
+    float3 src = float3(uImage.eval(coord).rgb);
+    return half4(half3(mix(src, blur, uParam3)), 1.0);
+}
+"""
+
+private const val LITTLE_PLANET = PRELUDE + """
+half4 main(float2 coord) {
+    float2 c = uResolution * 0.5;
+    float2 d = coord - c;
+    float r = length(d) / (min(uResolution.x, uResolution.y) * 0.5 * mix(1.5, 0.7, uParam1));
+    float a = atan(d.y, d.x) / 6.28318 + 0.5 + uParam2;
+    float sx = fract(a) * (uResolution.x - 1.0);
+    float sy = clamp((1.0 - clamp(r, 0.0, 1.0)) * (uResolution.y - 1.0), 0.0, uResolution.y - 1.0);
+    float3 col = float3(uImage.eval(float2(sx, sy)).rgb);
+    float3 src = float3(uImage.eval(coord).rgb);
+    return half4(half3(mix(src, col, uParam3)), 1.0);
+}
+"""
+
+private const val QUAD_MIRROR = PRELUDE + """
+half4 main(float2 coord) {
+    float cx = uResolution.x * mix(0.25, 0.75, uParam1);
+    float cy = uResolution.y * mix(0.25, 0.75, uParam2);
+    float sx = clamp(cx - abs(coord.x - cx), 0.0, uResolution.x - 1.0);
+    float sy = clamp(cy - abs(coord.y - cy), 0.0, uResolution.y - 1.0);
+    float3 col = float3(uImage.eval(float2(sx, sy)).rgb);
+    float3 src = float3(uImage.eval(coord).rgb);
+    return half4(half3(mix(src, col, uParam3)), 1.0);
+}
+"""
+
+private const val FLAG_WAVE = PRELUDE + """
+half4 main(float2 coord) {
+    float t = uTime * mix(0.5, 4.5, uParam3);
+    float amp = uResolution.y * 0.02 * mix(0.2, 2.0, uParam1);
+    float freq = mix(1.5, 8.0, uParam2) * 6.28318 / uResolution.x;
+    float pin = 0.25 + 0.75 * coord.x / uResolution.x;
+    float phase = coord.x * freq + t;
+    float dy = sin(phase) * amp * pin;
+    float dx = cos(phase * 0.7 + 1.3) * amp * 0.35 * pin;
+    float2 p = clamp(coord + float2(dx, dy), float2(0.0), uResolution - 1.0);
+    float3 col = float3(uImage.eval(p).rgb);
+    col *= 0.85 + 0.22 * cos(phase) * pin;
+    return half4(half3(clamp(col, 0.0, 1.0)), 1.0);
+}
+"""
+
+private const val UNDERWATER = PRELUDE + NOISE_LIB + """
+half4 main(float2 coord) {
+    float t = uTime * mix(0.1, 1.2, uParam3);
+    float2 warp = float2(
+        vnoise(coord * 0.008 + float2(t, t * 0.6)) - 0.5,
+        vnoise(coord * 0.008 + float2(7.3 - t * 0.8, t)) - 0.5
+    ) * uResolution.x * 0.035 * uParam1;
+    float2 p = clamp(coord + warp, float2(0.0), uResolution - 1.0);
+    float3 col = float3(uImage.eval(p).rgb);
+    float n = vnoise(coord * 0.02 + float2(t * 2.0, t));
+    float ridge = 1.0 - abs(2.0 * n - 1.0);
+    float ca = pow(ridge, 4.0) * uParam2;
+    col += ca * float3(0.35, 0.75, 0.85);
+    col *= float3(0.72, 0.94, 1.06);
+    col *= 1.0 - 0.35 * (coord.y / uResolution.y);
+    return half4(half3(clamp(col, 0.0, 1.0)), 1.0);
+}
+"""
+
+private const val HEAT_HAZE = PRELUDE + NOISE_LIB + """
+half4 main(float2 coord) {
+    float t = uTime * mix(1.0, 6.0, uParam3);
+    float scale = mix(0.05, 0.012, uParam2);
+    float n1 = vnoise(coord * scale + float2(0.0, -t)) - 0.5;
+    float n2 = vnoise(coord * scale + float2(31.7, -t * 1.3)) - 0.5;
+    float amp = mix(1.0, 12.0, uParam1) * (uResolution.x / 1400.0 + 0.4);
+    float2 p = clamp(coord + float2(n1, n2 * 0.5) * amp, float2(0.0), uResolution - 1.0);
+    return uImage.eval(p);
+}
+"""
+
+private const val DOUBLE_GHOST = PRELUDE + """
+half4 main(float2 coord) {
+    float ang = uParam2 * 6.28318;
+    float dist = mix(4.0, 90.0, uParam1) * (uResolution.x / 1400.0 + 0.4);
+    float2 p = clamp(coord + float2(cos(ang), sin(ang)) * dist, float2(0.0), uResolution - 1.0);
+    float3 src = float3(uImage.eval(coord).rgb);
+    float3 ghost = float3(uImage.eval(p).rgb);
+    float3 screenB = 1.0 - (1.0 - src) * (1.0 - ghost * 0.85);
+    return half4(half3(clamp(mix(src, screenB, uParam3), 0.0, 1.0)), 1.0);
+}
+"""
+
+private const val MATRIX_RAIN = PRELUDE + NOISE_LIB + """
+half4 main(float2 coord) {
+    float colW = uResolution.x / mix(16.0, 52.0, uParam1);
+    float glyphH = colW * 1.35;
+    float colId = floor(coord.x / colW);
+    float speed = (0.15 + 0.85 * hash21(float2(colId, 3.3))) * mix(0.08, 0.7, uParam3);
+    float head = fract(hash21(float2(colId, 7.7)) + uTime * speed);
+    float ypos = coord.y / uResolution.y;
+    float behind = fract(head - ypos);
+    float trail = pow(1.0 - behind, 3.5);
+    float flick = step(0.42, hash21(float2(colId * 1.7, floor(coord.y / glyphH) + floor(uTime * 8.0) * 0.31)));
+    float cellEdge = smoothstep(0.0, 0.15, fract(coord.x / colW)) * smoothstep(1.0, 0.85, fract(coord.x / colW));
+    float rain = trail * flick * cellEdge;
+    float headGlow = smoothstep(0.045, 0.0, behind) * cellEdge;
+    float3 src = float3(uImage.eval(coord).rgb);
+    float3 rainCol = float3(0.2, 1.0, 0.42) * rain * mix(0.7, 1.8, uParam2)
+                   + float3(0.75, 1.0, 0.82) * headGlow;
+    float3 outCol = src * 0.30 + rainCol;
+    return half4(half3(clamp(outCol, 0.0, 1.0)), 1.0);
+}
+"""
+
+private const val SPARKLE = PRELUDE + NOISE_LIB + """
+half4 main(float2 coord) {
+    float cell = uResolution.x / mix(12.0, 44.0, uParam1);
+    float2 gi = floor(coord / cell);
+    float2 gf = fract(coord / cell);
+    float2 pos = float2(0.2, 0.2) + 0.6 * float2(hash21(gi), hash21(gi + 9.1));
+    float phase = hash21(gi + 4.7) * 6.28318;
+    float tw = 0.5 + 0.5 * sin(uTime * mix(1.0, 7.0, uParam3) + phase);
+    float2 d = (gf - pos) * cell;
+    float size = cell * mix(0.04, 0.16, uParam2) * (0.35 + 0.65 * tw);
+    float cross1 = smoothstep(size, 0.0, abs(d.x)) * smoothstep(size * 7.0, 0.0, abs(d.y));
+    float cross2 = smoothstep(size, 0.0, abs(d.y)) * smoothstep(size * 7.0, 0.0, abs(d.x));
+    float sp = clamp(cross1 + cross2, 0.0, 1.0) * tw;
+    float2 cp = clamp((gi + pos) * cell, float2(0.0), uResolution - 1.0);
+    float lum = dot(float3(uImage.eval(cp).rgb), float3(0.2126, 0.7152, 0.0722));
+    float gate = smoothstep(0.35, 0.85, lum);
+    float3 src = float3(uImage.eval(coord).rgb);
+    float3 outCol = src + float3(1.0, 0.98, 0.92) * sp * gate * 1.3;
+    return half4(half3(clamp(outCol, 0.0, 1.0)), 1.0);
+}
+"""
+
+private const val NEGATIVE = PRELUDE + """
+half4 main(float2 coord) {
+    float3 src = float3(uImage.eval(coord).rgb);
+    float3 inv = 1.0 - src;
+    float3 tinted = inv * mix(float3(1.0), float3(1.08, 0.95, 0.82), uParam2);
+    float3 folded = mix(src, tinted, uParam1);
+    return half4(half3(clamp(mix(src, folded, uParam3), 0.0, 1.0)), 1.0);
+}
+"""
+
+private const val GAMEBOY = PRELUDE + """
+half4 main(float2 coord) {
+    float cell = uResolution.x / mix(200.0, 56.0, uParam1);
+    float2 sp = clamp((floor(coord / cell) + 0.5) * cell, float2(0.0), uResolution - 1.0);
+    float3 c = float3(uImage.eval(sp).rgb);
+    float lum = dot(c, float3(0.2126, 0.7152, 0.0722));
+    lum = clamp((lum - 0.5) * mix(0.9, 1.9, uParam2) + 0.5, 0.0, 1.0);
+    float3 p0 = float3(0.06, 0.22, 0.06);
+    float3 p1 = float3(0.19, 0.38, 0.19);
+    float3 p2 = float3(0.55, 0.67, 0.06);
+    float3 p3 = float3(0.61, 0.74, 0.06);
+    float3 pal = mix(p0, p1, step(0.25, lum));
+    pal = mix(pal, p2, step(0.5, lum));
+    pal = mix(pal, p3, step(0.75, lum));
+    float3 src = float3(uImage.eval(coord).rgb);
+    return half4(half3(mix(src, pal, uParam3)), 1.0);
+}
+"""
+
+private const val BIT_DITHER = PRELUDE + """
+float bayer2(float2 m) {
+    return 3.0 * m.y + 2.0 * m.x - 4.0 * m.x * m.y;
+}
+
+half4 main(float2 coord) {
+    float s = mix(1.0, 7.0, uParam1) * max(1.0, uResolution.x / 1200.0);
+    float2 p = floor(coord / s);
+    float2 m1 = mod(p, 2.0);
+    float2 m2 = mod(floor(p * 0.5), 2.0);
+    float bayer = (4.0 * bayer2(m2) + bayer2(m1)) / 16.0;
+    float2 sp = clamp((p + 0.5) * s, float2(0.0), uResolution - 1.0);
+    float lum = dot(float3(uImage.eval(sp).rgb), float3(0.2126, 0.7152, 0.0722));
+    float bw = step(bayer * 0.9 + 0.05 + (uParam2 - 0.5) * 0.5, lum);
+    float3 col = mix(float3(0.05, 0.05, 0.07), float3(0.93, 0.93, 0.88), bw);
+    float3 src = float3(uImage.eval(coord).rgb);
+    return half4(half3(mix(src, col, uParam3)), 1.0);
+}
+"""
+
+private const val WATERCOLOR = PRELUDE + NOISE_LIB + """
+half4 main(float2 coord) {
+    float radius = uResolution.x * 0.004 * mix(0.5, 3.0, uParam1);
+    float3 acc = float3(uImage.eval(coord).rgb);
+    acc += float3(uImage.eval(clamp(coord + float2( radius, 0.0), float2(0.0), uResolution - 1.0)).rgb);
+    acc += float3(uImage.eval(clamp(coord + float2(-radius, 0.0), float2(0.0), uResolution - 1.0)).rgb);
+    acc += float3(uImage.eval(clamp(coord + float2(0.0,  radius), float2(0.0), uResolution - 1.0)).rgb);
+    acc += float3(uImage.eval(clamp(coord + float2(0.0, -radius), float2(0.0), uResolution - 1.0)).rgb);
+    float dg = radius * 0.7071;
+    acc += float3(uImage.eval(clamp(coord + float2( dg,  dg), float2(0.0), uResolution - 1.0)).rgb);
+    acc += float3(uImage.eval(clamp(coord + float2(-dg,  dg), float2(0.0), uResolution - 1.0)).rgb);
+    acc += float3(uImage.eval(clamp(coord + float2( dg, -dg), float2(0.0), uResolution - 1.0)).rgb);
+    acc += float3(uImage.eval(clamp(coord + float2(-dg, -dg), float2(0.0), uResolution - 1.0)).rgb);
+    float3 wash = acc / 9.0;
+    float q = 6.0;
+    wash = mix(wash, floor(wash * q + 0.5) / q, 0.55);
+    float paper = 0.90 + 0.10 * vnoise(coord * 0.18);
+    wash *= mix(1.0, paper, uParam2);
+    float3 src = float3(uImage.eval(coord).rgb);
+    float e = length(wash - src);
+    wash *= 1.0 - clamp(e * 2.2, 0.0, 0.45) * uParam3;
+    return half4(half3(clamp(wash, 0.0, 1.0)), 1.0);
+}
+"""
+
+private const val PRISM_LEAK = PRELUDE + """
+float3 leakHue(float h) {
+    h = fract(h);
+    float r = abs(h * 6.0 - 3.0) - 1.0;
+    float g = 2.0 - abs(h * 6.0 - 2.0);
+    float b = 2.0 - abs(h * 6.0 - 4.0);
+    return clamp(float3(r, g, b), 0.0, 1.0);
+}
+
+half4 main(float2 coord) {
+    float d = (coord.x + coord.y) / (uResolution.x + uResolution.y);
+    float center = mix(0.15, 0.85, uParam1);
+    float width = 0.04 + 0.22 * uParam2;
+    float band = (d - center) / width;
+    float leak = exp(-band * band);
+    float3 rainbow = leakHue(clamp(band * 0.5 + 0.5, 0.0, 1.0) * 0.83);
+    float3 src = float3(uImage.eval(coord).rgb);
+    float3 outCol = 1.0 - (1.0 - src) * (1.0 - rainbow * leak * uParam3);
+    return half4(half3(clamp(outCol, 0.0, 1.0)), 1.0);
+}
+"""
+
+private const val TIME_SMEAR = PRELUDE + """
+half4 main(float2 coord) {
+    float prog = coord.y / uResolution.y;
+    float pinch = uParam1 * prog;
+    float sx = mix(coord.x, uResolution.x * 0.5, pinch * 0.85);
+    sx += sin(coord.y * mix(0.004, 0.05, uParam2)) * uResolution.x * 0.025 * uParam1;
+    sx = clamp(sx, 0.0, uResolution.x - 1.0);
+    float3 col = float3(uImage.eval(float2(sx, coord.y)).rgb);
+    float3 src = float3(uImage.eval(coord).rgb);
+    return half4(half3(mix(src, col, uParam3)), 1.0);
+}
+"""
+
+private const val FILM_FADE = PRELUDE + NOISE_LIB + """
+half4 main(float2 coord) {
+    float3 src = float3(uImage.eval(coord).rgb);
+    float3 c = src * mix(1.0, 0.80, uParam1) + 0.12 * uParam1;
+    float lum = dot(c, float3(0.2126, 0.7152, 0.0722));
+    c = mix(c, float3(lum), 0.20 * uParam1);
+    c *= mix(float3(1.0), float3(1.05, 1.0, 0.90), uParam1);
+    float grain = (hash21(coord * 0.85 + float2(fract(uTime) * 53.7, fract(uTime * 1.9) * 29.3)) - 0.5) * uParam2 * 0.28;
+    c += grain;
+    float2 uv = coord / uResolution - 0.5;
+    c *= 1.0 - dot(uv, uv) * 1.1 * uParam3;
+    return half4(half3(clamp(c, 0.0, 1.0)), 1.0);
+}
+"""
+
 /** Standalone animated background for the home screen hero (no input image). */
 const val HERO_AGSL = """
 uniform float2 uResolution;
@@ -1211,6 +1661,338 @@ object ShaderEffects {
             animated = true,
             accentStart = 0xFF0BD98A,
             accentEnd = 0xFF243BB3,
+        ),
+        ShaderEffect(
+            id = "toon",
+            name = "Toon",
+            tagline = "cel shading",
+            params = listOf(
+                ShaderParam("Levels", 0.5f),
+                ShaderParam("Edge", 0.5f),
+                ShaderParam("Blend", 1.0f),
+            ),
+            agsl = TOON,
+            accentStart = 0xFFFFB03D,
+            accentEnd = 0xFFE84A5F,
+        ),
+        ShaderEffect(
+            id = "anaglyph",
+            name = "Anaglyph",
+            tagline = "3d glasses",
+            params = listOf(
+                ShaderParam("Shift", 0.45f),
+                ShaderParam("Angle", 0.0f),
+                ShaderParam("Blend", 1.0f),
+            ),
+            agsl = ANAGLYPH,
+            accentStart = 0xFFFF3D3D,
+            accentEnd = 0xFF00C2D7,
+        ),
+        ShaderEffect(
+            id = "lomo",
+            name = "Lomo",
+            tagline = "cross process",
+            params = listOf(
+                ShaderParam("Curve", 0.6f),
+                ShaderParam("Vignette", 0.55f),
+                ShaderParam("Blend", 1.0f),
+            ),
+            agsl = LOMO,
+            accentStart = 0xFF7FB069,
+            accentEnd = 0xFF1B4332,
+        ),
+        ShaderEffect(
+            id = "oldfilm",
+            name = "Old Film",
+            tagline = "silent movie",
+            params = listOf(
+                ShaderParam("Age", 0.7f),
+                ShaderParam("Scratches", 0.55f),
+                ShaderParam("Grain", 0.45f),
+            ),
+            agsl = OLD_FILM,
+            animated = true,
+            accentStart = 0xFFC9A66B,
+            accentEnd = 0xFF4A3B28,
+        ),
+        ShaderEffect(
+            id = "infrared",
+            name = "Infrared",
+            tagline = "ir foliage",
+            params = listOf(
+                ShaderParam("Swap", 0.75f),
+                ShaderParam("Glow", 0.5f),
+                ShaderParam("Blend", 1.0f),
+            ),
+            agsl = INFRARED,
+            accentStart = 0xFFFF6B6B,
+            accentEnd = 0xFF8B0000,
+        ),
+        ShaderEffect(
+            id = "pixelsort",
+            name = "Pixel Sort",
+            tagline = "data streaks",
+            params = listOf(
+                ShaderParam("Threshold", 0.5f),
+                ShaderParam("Length", 0.5f),
+                ShaderParam("Blend", 1.0f),
+            ),
+            agsl = PIXEL_SORT,
+            accentStart = 0xFF00FFD1,
+            accentEnd = 0xFFFF00AA,
+        ),
+        ShaderEffect(
+            id = "stainedglass",
+            name = "Stained Glass",
+            tagline = "voronoi leads",
+            params = listOf(
+                ShaderParam("Cells", 0.5f),
+                ShaderParam("Leads", 0.55f),
+                ShaderParam("Blend", 1.0f),
+            ),
+            agsl = STAINED_GLASS,
+            accentStart = 0xFFE63946,
+            accentEnd = 0xFF457B9D,
+        ),
+        ShaderEffect(
+            id = "trimosaic",
+            name = "Tri Mosaic",
+            tagline = "faceted glass",
+            params = listOf(
+                ShaderParam("Size", 0.5f),
+                ShaderParam("Facets", 0.55f),
+                ShaderParam("Blend", 1.0f),
+            ),
+            agsl = TRI_MOSAIC,
+            accentStart = 0xFF9D4EDD,
+            accentEnd = 0xFF3C096C,
+        ),
+        ShaderEffect(
+            id = "spinblur",
+            name = "Spin Blur",
+            tagline = "rotation smear",
+            params = listOf(
+                ShaderParam("Amount", 0.5f),
+                ShaderParam("Falloff", 0.5f),
+                ShaderParam("Blend", 1.0f),
+            ),
+            agsl = SPIN_BLUR,
+            accentStart = 0xFF48CAE4,
+            accentEnd = 0xFF023E8A,
+        ),
+        ShaderEffect(
+            id = "motionblur",
+            name = "Motion Blur",
+            tagline = "speed streak",
+            params = listOf(
+                ShaderParam("Length", 0.5f),
+                ShaderParam("Angle", 0.0f),
+                ShaderParam("Blend", 1.0f),
+            ),
+            agsl = MOTION_BLUR,
+            accentStart = 0xFFFFA62B,
+            accentEnd = 0xFF582F0E,
+        ),
+        ShaderEffect(
+            id = "littleplanet",
+            name = "Little Planet",
+            tagline = "polar world",
+            params = listOf(
+                ShaderParam("Zoom", 0.5f),
+                ShaderParam("Rotate", 0.0f),
+                ShaderParam("Blend", 1.0f),
+            ),
+            agsl = LITTLE_PLANET,
+            accentStart = 0xFF06D6A0,
+            accentEnd = 0xFF118AB2,
+        ),
+        ShaderEffect(
+            id = "quadmirror",
+            name = "Quad Mirror",
+            tagline = "4-way fold",
+            params = listOf(
+                ShaderParam("Axis X", 0.5f),
+                ShaderParam("Axis Y", 0.5f),
+                ShaderParam("Blend", 1.0f),
+            ),
+            agsl = QUAD_MIRROR,
+            accentStart = 0xFFB5179E,
+            accentEnd = 0xFF3A0CA3,
+        ),
+        ShaderEffect(
+            id = "flagwave",
+            name = "Flag Wave",
+            tagline = "textile ripple",
+            params = listOf(
+                ShaderParam("Amplitude", 0.5f),
+                ShaderParam("Frequency", 0.45f),
+                ShaderParam("Speed", 0.5f),
+            ),
+            agsl = FLAG_WAVE,
+            animated = true,
+            accentStart = 0xFFE63946,
+            accentEnd = 0xFFF1FAEE,
+        ),
+        ShaderEffect(
+            id = "underwater",
+            name = "Underwater",
+            tagline = "caustic depths",
+            params = listOf(
+                ShaderParam("Warp", 0.5f),
+                ShaderParam("Caustics", 0.55f),
+                ShaderParam("Speed", 0.4f),
+            ),
+            agsl = UNDERWATER,
+            animated = true,
+            accentStart = 0xFF00B4D8,
+            accentEnd = 0xFF03045E,
+        ),
+        ShaderEffect(
+            id = "heathaze",
+            name = "Heat Haze",
+            tagline = "desert shimmer",
+            params = listOf(
+                ShaderParam("Strength", 0.5f),
+                ShaderParam("Scale", 0.5f),
+                ShaderParam("Speed", 0.5f),
+            ),
+            agsl = HEAT_HAZE,
+            animated = true,
+            accentStart = 0xFFFFBA08,
+            accentEnd = 0xFFD00000,
+        ),
+        ShaderEffect(
+            id = "ghost",
+            name = "Double Ghost",
+            tagline = "double exposure",
+            params = listOf(
+                ShaderParam("Offset", 0.4f),
+                ShaderParam("Angle", 0.12f),
+                ShaderParam("Mix", 0.7f),
+            ),
+            agsl = DOUBLE_GHOST,
+            accentStart = 0xFFCBC0D3,
+            accentEnd = 0xFF56445D,
+        ),
+        ShaderEffect(
+            id = "matrixrain",
+            name = "Matrix Rain",
+            tagline = "digital downpour",
+            params = listOf(
+                ShaderParam("Columns", 0.5f),
+                ShaderParam("Glow", 0.6f),
+                ShaderParam("Speed", 0.45f),
+            ),
+            agsl = MATRIX_RAIN,
+            animated = true,
+            accentStart = 0xFF00FF41,
+            accentEnd = 0xFF003B00,
+        ),
+        ShaderEffect(
+            id = "sparkle",
+            name = "Sparkle",
+            tagline = "glitter bomb",
+            params = listOf(
+                ShaderParam("Density", 0.55f),
+                ShaderParam("Size", 0.5f),
+                ShaderParam("Speed", 0.5f),
+            ),
+            agsl = SPARKLE,
+            animated = true,
+            accentStart = 0xFFFFF3B0,
+            accentEnd = 0xFFE09F3E,
+        ),
+        ShaderEffect(
+            id = "negative",
+            name = "Negative",
+            tagline = "film invert",
+            params = listOf(
+                ShaderParam("Invert", 1.0f),
+                ShaderParam("Tint", 0.4f),
+                ShaderParam("Blend", 1.0f),
+            ),
+            agsl = NEGATIVE,
+            accentStart = 0xFF2B2D42,
+            accentEnd = 0xFFEDF2F4,
+        ),
+        ShaderEffect(
+            id = "gameboy",
+            name = "Game Boy",
+            tagline = "4-shade lcd",
+            params = listOf(
+                ShaderParam("Pixel", 0.5f),
+                ShaderParam("Contrast", 0.5f),
+                ShaderParam("Blend", 1.0f),
+            ),
+            agsl = GAMEBOY,
+            accentStart = 0xFF9BBC0F,
+            accentEnd = 0xFF0F380F,
+        ),
+        ShaderEffect(
+            id = "bitdither",
+            name = "Bit Dither",
+            tagline = "ordered 1-bit",
+            params = listOf(
+                ShaderParam("Size", 0.35f),
+                ShaderParam("Threshold", 0.5f),
+                ShaderParam("Blend", 1.0f),
+            ),
+            agsl = BIT_DITHER,
+            accentStart = 0xFFF5F5F5,
+            accentEnd = 0xFF1A1A2E,
+        ),
+        ShaderEffect(
+            id = "watercolor",
+            name = "Watercolor",
+            tagline = "ink wash",
+            params = listOf(
+                ShaderParam("Flow", 0.5f),
+                ShaderParam("Paper", 0.55f),
+                ShaderParam("Edges", 0.5f),
+            ),
+            agsl = WATERCOLOR,
+            accentStart = 0xFF83C5BE,
+            accentEnd = 0xFF006D77,
+        ),
+        ShaderEffect(
+            id = "prismleak",
+            name = "Prism Leak",
+            tagline = "rainbow flare",
+            params = listOf(
+                ShaderParam("Position", 0.5f),
+                ShaderParam("Width", 0.5f),
+                ShaderParam("Strength", 0.65f),
+            ),
+            agsl = PRISM_LEAK,
+            accentStart = 0xFFFF6D00,
+            accentEnd = 0xFF7B2CBF,
+        ),
+        ShaderEffect(
+            id = "timesmear",
+            name = "Time Smear",
+            tagline = "slit-scan pinch",
+            params = listOf(
+                ShaderParam("Stretch", 0.5f),
+                ShaderParam("Waves", 0.4f),
+                ShaderParam("Blend", 1.0f),
+            ),
+            agsl = TIME_SMEAR,
+            accentStart = 0xFF4CC9F0,
+            accentEnd = 0xFF7209B7,
+        ),
+        ShaderEffect(
+            id = "filmfade",
+            name = "Film Fade",
+            tagline = "faded matte",
+            params = listOf(
+                ShaderParam("Fade", 0.6f),
+                ShaderParam("Grain", 0.4f),
+                ShaderParam("Vignette", 0.5f),
+            ),
+            agsl = FILM_FADE,
+            animated = true,
+            accentStart = 0xFFD5BDAF,
+            accentEnd = 0xFF6B4F3A,
         ),
     )
 }

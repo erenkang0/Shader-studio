@@ -4,7 +4,7 @@ GPU-powered photo editor for **Android 14+**, built with **Jetpack Compose**, **
 
 > 📦 **Download:** grab the latest APK from the [Releases](../../releases) page.
 
-## ✨ 33 Effects
+## ✨ 58 Effects
 
 | Effect | Look | Animated |
 | --- | --- | --- |
@@ -41,6 +41,31 @@ GPU-powered photo editor for **Android 14+**, built with **Jetpack Compose**, **
 | **Night Vision** | Green optic, grain, vignette | ✅ |
 | **Pop Dots** | Comic CMYK dot screens | – |
 | **Aurora** | Northern-lights curtains overlay | ✅ |
+| **Toon** | Cel shading with dark outlines | – |
+| **Anaglyph** | Red/cyan 3D-glasses stereo | – |
+| **Lomo** | Cross-processed s-curve + heavy vignette | – |
+| **Old Film** | Sepia, scratches, dust, flicker | ✅ |
+| **Infrared** | IR channel-swap foliage glow | – |
+| **Pixel Sort** | Threshold-driven bright streaks | – |
+| **Stained Glass** | Voronoi cells with lead lines | – |
+| **Tri Mosaic** | Faceted triangle pixelation | – |
+| **Spin Blur** | Rotational smear around center | – |
+| **Motion Blur** | Directional speed streak | – |
+| **Little Planet** | Polar-coordinates tiny world | – |
+| **Quad Mirror** | 4-way symmetry fold | – |
+| **Flag Wave** | Cloth ripple with shading | ✅ |
+| **Underwater** | Caustic light + blue depth warp | ✅ |
+| **Heat Haze** | Rising desert shimmer | ✅ |
+| **Double Ghost** | Double-exposure screen blend | – |
+| **Matrix Rain** | Green digital rain overlay | ✅ |
+| **Sparkle** | Twinkling glitter on highlights | ✅ |
+| **Negative** | Tinted film inversion | – |
+| **Game Boy** | 4-shade LCD palette | – |
+| **Bit Dither** | Ordered Bayer 1-bit dithering | – |
+| **Watercolor** | Soft ink wash on paper grain | – |
+| **Prism Leak** | Diagonal rainbow light leak | – |
+| **Time Smear** | Slit-scan progressive pinch | – |
+| **Film Fade** | Lifted-black matte + grain | ✅ |
 
 Every effect exposes up to three parameters driven by Material 3 sliders, previews in real time via `RenderEffect` + `RuntimeShader`, and exports at full resolution through a GPU pass (`HardwareRenderer` + `ImageReader`) straight into your gallery (`Pictures/Shader Studio`).
 
