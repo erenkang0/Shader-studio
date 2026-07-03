@@ -41,6 +41,7 @@ import androidx.compose.ui.unit.dp
 import com.shaderstudio.app.R
 import com.shaderstudio.app.shaders.HERO_AGSL
 import kotlinx.coroutines.isActive
+import kotlin.random.Random
 
 @Composable
 fun HomeScreen(
@@ -48,11 +49,13 @@ fun HomeScreen(
     onDemo: () -> Unit,
 ) {
     val heroShader = remember { RuntimeShader(HERO_AGSL) }
-    var time by remember { mutableFloatStateOf(0f) }
+    // Random phase offset: the liquid field opens differently on every launch.
+    val timeOffset = remember { Random.nextFloat() * 4096f }
+    var time by remember { mutableFloatStateOf(timeOffset) }
     LaunchedEffect(Unit) {
         val start = System.nanoTime()
         while (isActive) {
-            withFrameNanos { now -> time = (now - start) / 1_000_000_000f }
+            withFrameNanos { now -> time = timeOffset + (now - start) / 1_000_000_000f }
         }
     }
 

@@ -10,4 +10,14 @@
     <string name="home_tagline">Turn photos into posters with GPU shader art</string>
     <string name="home_subtitle">Real-time AGSL effects · Material 3 Expressive · Android 14+</string>
     <string name="effects_label">EFFECTS</string>
+    <string name="layers_label">LAYERS</string>
+    <string name="base_photo">Photo</string>
+    <string name="add_layer">Add layer</string>
+    <string name="tab_effect">Effect</string>
+    <string name="tab_blend">Blend &amp; Layer</string>
+    <string name="opacity">Opacity</string>
+    <string name="layer_visible">Visible</string>
+    <string name="delete_layer">Delete layer</string>
+    <string name="no_layers_hint">Add a layer to start applying effects</string>
+    <string name="drag_hint">Drag on the photo to move the effect</string>
 </resources>

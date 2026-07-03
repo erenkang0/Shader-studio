@@ -33,24 +33,32 @@ jobs:
           ./gradlew assembleRelease --stacktrace
 
       - name: Collect APK
-        run: cp app/build/outputs/apk/release/app-release.apk ShaderStudio-v1.1.0.apk
+        run: cp app/build/outputs/apk/release/app-release.apk ShaderStudio-v1.2.0.apk
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: ShaderStudio-APK
-          path: ShaderStudio-v1.1.0.apk
+          path: ShaderStudio-v1.2.0.apk
 
       - name: Create / update GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.1.0
-          name: Shader Studio v1.1.0
+          tag_name: v1.2.0
+          name: Shader Studio v1.2.0
           make_latest: true
           body: |
-            # Shader Studio v1.1.0 🎨
+            # Shader Studio v1.2.0 🎨
 
             GPU-powered photo editor for **Android 14+** built with **Material 3 Expressive** and **AGSL runtime shaders**.
+
+            ## New in 1.2.0
+            - **Layers** — stack up to 5 effect layers over your photo, Procreate-style
+            - **26 blend modes** — the full Procreate set (Multiply, Screen, Overlay, Soft/Hard/Vivid/Linear/Pin Light, Hard Mix, Color Burn/Dodge, Difference, Exclusion, Subtract, Divide, Hue, Saturation, Color, Luminosity…), with per-layer opacity and visibility
+            - **Draggable effect position** — move the center of Kaleidoscope, Swirl, Lens, Ripple, Little Planet, Tilt Shift focus and more by dragging on the photo
+            - **Full-resolution export** — effects render at the photo's own resolution (up to 8192 px) at JPEG quality 98; preview and export share the exact same generated shader
+            - Bigger preview, tap the selected effect again for its settings, tap the selected layer again for blend controls
+            - Home screen liquid animation opens differently on every launch
 
             ## 58 shader effects
             **Poster & print:** Dot Matrix, Print Press, Pop Dots, Linescreen, Sketch, Bit Dither, Poster Pop, Duotone, Toon, Watercolor, Oil Flow
@@ -64,7 +72,7 @@ jobs:
             up to three adjustable parameters.
 
             ## Install
-            Download `ShaderStudio-v1.1.0.apk` below and install it (requires Android 14 or newer).
+            Download `ShaderStudio-v1.2.0.apk` below and install it (requires Android 14 or newer).
 
             All effects render in real time on the GPU and export at full resolution to your gallery.
-          files: ShaderStudio-v1.1.0.apk
+          files: ShaderStudio-v1.2.0.apk

@@ -24,20 +24,22 @@ data class ShaderEffect(
     val params: List<ShaderParam>,
     val agsl: String?,
     val animated: Boolean = false,
+    val positionable: Boolean = false,
     val accentStart: Long = 0xFF4A5BF2,
     val accentEnd: Long = 0xFFB36BFF,
 )
 
-private const val PRELUDE = """
+internal const val PRELUDE = """
 uniform shader uImage;
 uniform float2 uResolution;
 uniform float uTime;
+uniform float2 uCenter;
 uniform float uParam1;
 uniform float uParam2;
 uniform float uParam3;
 """
 
-private const val NOISE_LIB = """
+internal const val NOISE_LIB = """
 float hash21(float2 p) {
     p = fract(p * float2(123.34, 345.45));
     p += dot(p, p + 34.345);
@@ -207,7 +209,7 @@ half4 main(float2 coord) {
 
 private const val RIPPLE = PRELUDE + """
 half4 main(float2 coord) {
-    float2 center = uResolution * 0.5;
+    float2 center = uCenter * uResolution;
     float2 d = coord - center;
     float len = length(d) + 0.001;
     float freq = mix(0.004, 0.045, uParam1);
@@ -226,7 +228,7 @@ half4 main(float2 coord) {
 
 private const val KALEIDOSCOPE = PRELUDE + """
 half4 main(float2 coord) {
-    float2 c = uResolution * 0.5;
+    float2 c = uCenter * uResolution;
     float2 d = coord - c;
     float seg = floor(mix(3.0, 14.0, uParam1) + 0.5);
     float slice = 6.28318 / seg;
@@ -243,7 +245,7 @@ half4 main(float2 coord) {
 
 private const val SWIRL = PRELUDE + """
 half4 main(float2 coord) {
-    float2 c = uResolution * 0.5;
+    float2 c = uCenter * uResolution;
     float2 d = coord - c;
     float r = length(d);
     float maxR = min(uResolution.x, uResolution.y) * mix(0.25, 0.85, uParam2);
@@ -260,7 +262,7 @@ half4 main(float2 coord) {
 
 private const val LENS = PRELUDE + """
 half4 main(float2 coord) {
-    float2 c = uResolution * 0.5;
+    float2 c = uCenter * uResolution;
     float half_min = min(uResolution.x, uResolution.y) * 0.5;
     float2 d = (coord - c) / half_min;
     float r = length(d) + 0.0001;
@@ -279,7 +281,7 @@ half4 main(float2 coord) {
 
 private const val TILT_SHIFT = PRELUDE + """
 half4 main(float2 coord) {
-    float focusY = uResolution.y * uParam2;
+    float focusY = uResolution.y * uCenter.y;
     float band = uResolution.y * 0.16;
     float t = smoothstep(0.0, band * 2.2, abs(coord.y - focusY));
     float radius = t * min(uResolution.x, uResolution.y) * 0.018 * mix(0.2, 2.2, uParam1);
@@ -294,7 +296,7 @@ half4 main(float2 coord) {
     acc += float3(uImage.eval(coord + float2( dg, -dg)).rgb);
     acc += float3(uImage.eval(coord + float2(-dg, -dg)).rgb);
     float3 blur = acc / 9.0;
-    blur *= 1.0 + 0.12 * uParam3 * t;
+    blur *= 1.0 + 0.12 * uParam2 * t;
     float4 orig = float4(uImage.eval(coord));
     float3 outCol = mix(orig.rgb, blur, step(0.001, radius));
     return half4(half3(clamp(outCol, 0.0, 1.0)), 1.0);
@@ -502,21 +504,21 @@ half4 main(float2 coord) {
 
 private const val MIRROR = PRELUDE + """
 half4 main(float2 coord) {
-    float axis = uResolution.x * mix(0.25, 0.75, uParam1);
-    float feather = uResolution.x * mix(0.001, 0.12, uParam2);
+    float axis = uResolution.x * clamp(uCenter.x, 0.1, 0.9);
+    float feather = uResolution.x * mix(0.001, 0.12, uParam1);
     float mx = 2.0 * axis - coord.x;
     mx = clamp(mx, 0.0, uResolution.x - 1.0);
     float4 mirrored = float4(uImage.eval(float2(mx, coord.y)));
     float4 orig = float4(uImage.eval(coord));
     float m = smoothstep(axis - feather, axis + feather, coord.x);
     float3 folded = mix(orig.rgb, mirrored.rgb, m);
-    return half4(half3(mix(orig.rgb, folded, uParam3)), 1.0);
+    return half4(half3(mix(orig.rgb, folded, uParam2)), 1.0);
 }
 """
 
 private const val CHROMA_ZOOM = PRELUDE + """
 half4 main(float2 coord) {
-    float2 c = uResolution * 0.5;
+    float2 c = uCenter * uResolution;
     float2 d = coord - c;
     float falloff = smoothstep(0.0, min(uResolution.x, uResolution.y) * mix(0.2, 0.7, uParam2), length(d));
     float s = mix(0.0, 0.09, uParam1) * falloff;
@@ -899,7 +901,7 @@ half4 main(float2 coord) {
 
 private const val SPIN_BLUR = PRELUDE + """
 half4 main(float2 coord) {
-    float2 c = uResolution * 0.5;
+    float2 c = uCenter * uResolution;
     float2 d = coord - c;
     float fall = smoothstep(0.0, min(uResolution.x, uResolution.y) * 0.5, length(d));
     float total = mix(0.01, 0.16, uParam1) * mix(0.4, 1.0, fall) * mix(0.5, 1.5, uParam2);
@@ -937,7 +939,7 @@ half4 main(float2 coord) {
 
 private const val LITTLE_PLANET = PRELUDE + """
 half4 main(float2 coord) {
-    float2 c = uResolution * 0.5;
+    float2 c = uCenter * uResolution;
     float2 d = coord - c;
     float r = length(d) / (min(uResolution.x, uResolution.y) * 0.5 * mix(1.5, 0.7, uParam1));
     float a = atan(d.y, d.x) / 6.28318 + 0.5 + uParam2;
@@ -951,13 +953,13 @@ half4 main(float2 coord) {
 
 private const val QUAD_MIRROR = PRELUDE + """
 half4 main(float2 coord) {
-    float cx = uResolution.x * mix(0.25, 0.75, uParam1);
-    float cy = uResolution.y * mix(0.25, 0.75, uParam2);
+    float cx = uResolution.x * clamp(uCenter.x, 0.15, 0.85);
+    float cy = uResolution.y * clamp(uCenter.y, 0.15, 0.85);
     float sx = clamp(cx - abs(coord.x - cx), 0.0, uResolution.x - 1.0);
     float sy = clamp(cy - abs(coord.y - cy), 0.0, uResolution.y - 1.0);
     float3 col = float3(uImage.eval(float2(sx, sy)).rgb);
     float3 src = float3(uImage.eval(coord).rgb);
-    return half4(half3(mix(src, col, uParam3)), 1.0);
+    return half4(half3(mix(src, col, uParam1)), 1.0);
 }
 """
 
@@ -1149,13 +1151,13 @@ float3 leakHue(float h) {
 
 half4 main(float2 coord) {
     float d = (coord.x + coord.y) / (uResolution.x + uResolution.y);
-    float center = mix(0.15, 0.85, uParam1);
-    float width = 0.04 + 0.22 * uParam2;
+    float center = clamp((uCenter.x + uCenter.y) * 0.5, 0.1, 0.9);
+    float width = 0.04 + 0.22 * uParam1;
     float band = (d - center) / width;
     float leak = exp(-band * band);
     float3 rainbow = leakHue(clamp(band * 0.5 + 0.5, 0.0, 1.0) * 0.83);
     float3 src = float3(uImage.eval(coord).rgb);
-    float3 outCol = 1.0 - (1.0 - src) * (1.0 - rainbow * leak * uParam3);
+    float3 outCol = 1.0 - (1.0 - src) * (1.0 - rainbow * leak * uParam2);
     return half4(half3(clamp(outCol, 0.0, 1.0)), 1.0);
 }
 """
@@ -1330,6 +1332,7 @@ object ShaderEffects {
             ),
             agsl = RIPPLE,
             animated = true,
+            positionable = true,
             accentStart = 0xFF19A7FF,
             accentEnd = 0xFF6BE3FF,
         ),
@@ -1343,6 +1346,7 @@ object ShaderEffects {
                 ShaderParam("Zoom", 0.25f),
             ),
             agsl = KALEIDOSCOPE,
+            positionable = true,
             accentStart = 0xFFFF3D8A,
             accentEnd = 0xFF8A3DFF,
         ),
@@ -1356,6 +1360,7 @@ object ShaderEffects {
                 ShaderParam("Blend", 1.0f),
             ),
             agsl = SWIRL,
+            positionable = true,
             accentStart = 0xFF3DDCFF,
             accentEnd = 0xFF2E5BFF,
         ),
@@ -1369,6 +1374,7 @@ object ShaderEffects {
                 ShaderParam("Blend", 1.0f),
             ),
             agsl = LENS,
+            positionable = true,
             accentStart = 0xFF9BE15D,
             accentEnd = 0xFF00B588,
         ),
@@ -1378,10 +1384,10 @@ object ShaderEffects {
             tagline = "miniature focus",
             params = listOf(
                 ShaderParam("Blur", 0.55f),
-                ShaderParam("Focus", 0.5f),
                 ShaderParam("Boost", 0.4f),
             ),
             agsl = TILT_SHIFT,
+            positionable = true,
             accentStart = 0xFFFFB03D,
             accentEnd = 0xFFFF5E3D,
         ),
@@ -1520,11 +1526,11 @@ object ShaderEffects {
             name = "Mirror",
             tagline = "symmetry fold",
             params = listOf(
-                ShaderParam("Axis", 0.5f),
                 ShaderParam("Feather", 0.25f),
                 ShaderParam("Blend", 1.0f),
             ),
             agsl = MIRROR,
+            positionable = true,
             accentStart = 0xFF6BC8FF,
             accentEnd = 0xFFB36BFF,
         ),
@@ -1538,6 +1544,7 @@ object ShaderEffects {
                 ShaderParam("Blend", 1.0f),
             ),
             agsl = CHROMA_ZOOM,
+            positionable = true,
             accentStart = 0xFFFF3D5E,
             accentEnd = 0xFF3D9BFF,
         ),
@@ -1777,6 +1784,7 @@ object ShaderEffects {
                 ShaderParam("Blend", 1.0f),
             ),
             agsl = SPIN_BLUR,
+            positionable = true,
             accentStart = 0xFF48CAE4,
             accentEnd = 0xFF023E8A,
         ),
@@ -1803,6 +1811,7 @@ object ShaderEffects {
                 ShaderParam("Blend", 1.0f),
             ),
             agsl = LITTLE_PLANET,
+            positionable = true,
             accentStart = 0xFF06D6A0,
             accentEnd = 0xFF118AB2,
         ),
@@ -1811,11 +1820,10 @@ object ShaderEffects {
             name = "Quad Mirror",
             tagline = "4-way fold",
             params = listOf(
-                ShaderParam("Axis X", 0.5f),
-                ShaderParam("Axis Y", 0.5f),
                 ShaderParam("Blend", 1.0f),
             ),
             agsl = QUAD_MIRROR,
+            positionable = true,
             accentStart = 0xFFB5179E,
             accentEnd = 0xFF3A0CA3,
         ),
@@ -1959,11 +1967,11 @@ object ShaderEffects {
             name = "Prism Leak",
             tagline = "rainbow flare",
             params = listOf(
-                ShaderParam("Position", 0.5f),
                 ShaderParam("Width", 0.5f),
                 ShaderParam("Strength", 0.65f),
             ),
             agsl = PRISM_LEAK,
+            positionable = true,
             accentStart = 0xFFFF6D00,
             accentEnd = 0xFF7B2CBF,
         ),

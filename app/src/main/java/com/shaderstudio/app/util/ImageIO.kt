@@ -19,53 +19,70 @@ import android.media.ImageReader
 import android.net.Uri
 import android.os.Environment
 import android.provider.MediaStore
-import com.shaderstudio.app.shaders.ShaderEffect
+import com.shaderstudio.app.shaders.LayerCompositor
+import com.shaderstudio.app.shaders.LayerSpec
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlin.math.max
 import kotlin.math.roundToInt
 
-private const val MAX_DIMENSION = 2560
+/**
+ * Effects render at the photo's own resolution. 8192 px covers the maximum
+ * GPU texture size of virtually all Android 14 devices; anything larger is
+ * gently downscaled, and decode retries at smaller sizes if memory runs out.
+ */
+private const val MAX_DIMENSION = 8192
+private const val JPEG_QUALITY = 98
 
 suspend fun loadBitmap(context: Context, uri: Uri): Bitmap? = withContext(Dispatchers.IO) {
-    try {
-        val source = ImageDecoder.createSource(context.contentResolver, uri)
-        ImageDecoder.decodeBitmap(source) { decoder, info, _ ->
-            decoder.allocator = ImageDecoder.ALLOCATOR_SOFTWARE
-            decoder.isMutableRequired = false
-            val w = info.size.width
-            val h = info.size.height
-            val largest = max(w, h)
-            if (largest > MAX_DIMENSION) {
-                val scale = MAX_DIMENSION.toFloat() / largest
-                decoder.setTargetSize((w * scale).roundToInt(), (h * scale).roundToInt())
+    for (cap in intArrayOf(MAX_DIMENSION, 4096, 2048)) {
+        try {
+            val source = ImageDecoder.createSource(context.contentResolver, uri)
+            return@withContext ImageDecoder.decodeBitmap(source) { decoder, info, _ ->
+                decoder.allocator = ImageDecoder.ALLOCATOR_SOFTWARE
+                decoder.isMutableRequired = false
+                val w = info.size.width
+                val h = info.size.height
+                val largest = max(w, h)
+                if (largest > cap) {
+                    val scale = cap.toFloat() / largest
+                    decoder.setTargetSize((w * scale).roundToInt(), (h * scale).roundToInt())
+                }
             }
+        } catch (e: OutOfMemoryError) {
+            // retry with the next smaller cap
+        } catch (e: Exception) {
+            return@withContext null
         }
-    } catch (e: Exception) {
-        null
     }
+    null
 }
 
 /**
- * Renders [src] through the effect's RuntimeShader at full resolution.
- * Prefers a GPU pass (HardwareRenderer + ImageReader); falls back to the
- * software raster pipeline if the GPU path is unavailable.
+ * Renders the full layer stack over [src] at the photo's own resolution.
+ * The exact same generated AGSL program drives the live preview, so the
+ * export matches the preview pixel-for-pixel (at higher resolution).
  */
-suspend fun applyShaderToBitmap(
+suspend fun applyLayerStackToBitmap(
     src: Bitmap,
-    effect: ShaderEffect,
-    params: List<Float>,
+    layers: List<LayerSpec>,
     time: Float,
 ): Bitmap = withContext(Dispatchers.Default) {
-    val agsl = effect.agsl ?: return@withContext src
+    val active = layers.filter { it.opacity > 0f }
+    if (active.isEmpty()) return@withContext src
     val w = src.width
     val h = src.height
-    val shader = RuntimeShader(agsl)
+    val shader = RuntimeShader(LayerCompositor.generateSource(active.map { it.effect }))
     shader.setInputShader("uImage", BitmapShader(src, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP))
     shader.setFloatUniform("uResolution", w.toFloat(), h.toFloat())
     shader.setFloatUniform("uTime", time)
-    effect.params.forEachIndexed { i, p ->
-        shader.setFloatUniform("uParam${i + 1}", params.getOrElse(i) { p.default })
+    active.forEachIndexed { i, layer ->
+        layer.effect.params.forEachIndexed { j, p ->
+            shader.setFloatUniform("uL${i}P${j + 1}", layer.params.getOrElse(j) { p.default })
+        }
+        shader.setFloatUniform("uL${i}Center", layer.centerX.coerceIn(0f, 1f), layer.centerY.coerceIn(0f, 1f))
+        shader.setIntUniform("uL${i}Mode", layer.blend.ordinal)
+        shader.setFloatUniform("uL${i}Opacity", layer.opacity.coerceIn(0f, 1f))
     }
     val paint = Paint().apply { this.shader = shader }
 
@@ -119,7 +136,7 @@ suspend fun saveToGallery(context: Context, bitmap: Bitmap): Boolean = withConte
         ?: return@withContext false
     try {
         val ok = resolver.openOutputStream(uri)?.use { stream ->
-            bitmap.compress(Bitmap.CompressFormat.JPEG, 95, stream)
+            bitmap.compress(Bitmap.CompressFormat.JPEG, JPEG_QUALITY, stream)
         } ?: false
         if (!ok) {
             resolver.delete(uri, null, null)

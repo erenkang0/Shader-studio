@@ -67,7 +67,15 @@ GPU-powered photo editor for **Android 14+**, built with **Jetpack Compose**, **
 | **Time Smear** | Slit-scan progressive pinch | – |
 | **Film Fade** | Lifted-black matte + grain | ✅ |
 
-Every effect exposes up to three parameters driven by Material 3 sliders, previews in real time via `RenderEffect` + `RuntimeShader`, and exports at full resolution through a GPU pass (`HardwareRenderer` + `ImageReader`) straight into your gallery (`Pictures/Shader Studio`).
+Every effect exposes up to three parameters driven by Material 3 sliders, previews in real time via `RenderEffect` + `RuntimeShader`, and exports at the photo's own resolution (up to 8192 px, JPEG 98) through a GPU pass (`HardwareRenderer` + `ImageReader`) straight into your gallery (`Pictures/Shader Studio`).
+
+## 🧅 Layers & Blend Modes
+
+Stack up to **5 effect layers** over the photo, Procreate-style. Each layer has its own effect, parameters, opacity, visibility toggle and one of **26 blend modes** — the full Procreate set: Normal, Darken, Multiply, Color Burn, Linear Burn, Darker Color, Lighten, Screen, Color Dodge, Add, Lighter Color, Overlay, Soft Light, Hard Light, Vivid Light, Linear Light, Pin Light, Hard Mix, Difference, Exclusion, Subtract, Divide, Hue, Saturation, Color, Luminosity.
+
+The whole stack compiles into a **single generated AGSL program** (`shaders/LayerCompositor.kt`) used identically for the live preview and the full-resolution export — what you see is exactly what gets saved. Blend math follows the PDF/Photoshop separable + non-separable spec, implemented per-pixel in AGSL.
+
+Center-based effects (Kaleidoscope, Swirl, Lens, Ripple, Spin Blur, Chroma Zoom, Little Planet, Quad Mirror, Mirror, Tilt Shift, Prism Leak) are **positionable**: drag on the preview to move the effect's center / axis / focus line.
 
 ## 🧱 Tech
 

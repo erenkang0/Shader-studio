@@ -8,6 +8,16 @@
     <string name="reset_params">Sıfırla</string>
     <string name="close_editor">Kapat</string>
     <string name="home_tagline">GPU shader sanatıyla fotoğrafları postere dönüştür</string>
-    <string name="home_subtitle">Gerçek zamanlı AGSL efektleri · Material 3 Expressive · Android 14+</string>
+    <string name="home_subtitle">AGSL · Material 3 Expressive · Android 14+</string>
     <string name="effects_label">EFEKTLER</string>
+    <string name="layers_label">KATMANLAR</string>
+    <string name="base_photo">Fotoğraf</string>
+    <string name="add_layer">Katman ekle</string>
+    <string name="tab_effect">Efekt</string>
+    <string name="tab_blend">Karışım ve Katman</string>
+    <string name="opacity">Opaklık</string>
+    <string name="layer_visible">Görünür</string>
+    <string name="delete_layer">Katmanı sil</string>
+    <string name="no_layers_hint">Efekt uygulamak için bir katman ekle</string>
+    <string name="drag_hint">Efekti taşımak için fotoğrafın üzerinde sürükle</string>
 </resources>
