@@ -80,7 +80,7 @@ suspend fun applyShaderToBitmap(
 
 private fun renderOnGpu(w: Int, h: Int, paint: Paint): Bitmap {
     val usage = HardwareBuffer.USAGE_GPU_SAMPLED_IMAGE or HardwareBuffer.USAGE_GPU_COLOR_OUTPUT
-    ImageReader.newInstance(w, h, PixelFormat.RGBA_8888, 1, usage).use { reader ->
+    return ImageReader.newInstance(w, h, PixelFormat.RGBA_8888, 1, usage).use { reader ->
         val renderer = HardwareRenderer()
         try {
             val node = RenderNode("shaderExport")
