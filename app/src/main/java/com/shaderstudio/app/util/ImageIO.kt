@@ -5,6 +5,7 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapShader
 import android.graphics.Canvas
+import android.graphics.HardwareRenderer
 import android.graphics.ImageDecoder
 import android.graphics.LinearGradient
 import android.graphics.Paint
@@ -13,7 +14,6 @@ import android.graphics.RadialGradient
 import android.graphics.RenderNode
 import android.graphics.RuntimeShader
 import android.graphics.Shader
-import android.graphics.HardwareRenderer
 import android.hardware.HardwareBuffer
 import android.media.ImageReader
 import android.net.Uri
@@ -27,15 +27,35 @@ import kotlin.math.max
 import kotlin.math.roundToInt
 
 /**
- * Effects render at the photo's own resolution. 8192 px covers the maximum
- * GPU texture size of virtually all Android 14 devices; anything larger is
- * gently downscaled, and decode retries at smaller sizes if memory runs out.
+ * Effects render at the photo's own resolution. 16384 px covers the maximum
+ * GPU texture size of modern Android 14+ devices (a 4K photo renders at 4K,
+ * an 8K photo at 8K); larger sources are gently downscaled, and decode
+ * retries at smaller caps if memory runs out.
  */
-private const val MAX_DIMENSION = 8192
-private const val JPEG_QUALITY = 98
+private const val MAX_DIMENSION = 16384
+
+/** Chosen export container. */
+enum class ExportFormat { JPEG, PNG, GIF, MP4 }
+
+/** Target longest-edge in pixels; ORIGINAL keeps the photo's own size. */
+enum class ExportResolution(val maxEdge: Int) {
+    ORIGINAL(0),
+    UHD_4K(3840),
+    QHD_2K(2560),
+    FHD_1080(1920),
+}
+
+/** Compression strength for lossy formats. */
+enum class ExportQuality { HIGH, MAX }
+
+data class ExportOptions(
+    val format: ExportFormat = ExportFormat.JPEG,
+    val resolution: ExportResolution = ExportResolution.ORIGINAL,
+    val quality: ExportQuality = ExportQuality.HIGH,
+)
 
 suspend fun loadBitmap(context: Context, uri: Uri): Bitmap? = withContext(Dispatchers.IO) {
-    for (cap in intArrayOf(MAX_DIMENSION, 4096, 2048)) {
+    for (cap in intArrayOf(MAX_DIMENSION, 8192, 4096, 2048)) {
         try {
             val source = ImageDecoder.createSource(context.contentResolver, uri)
             return@withContext ImageDecoder.decodeBitmap(source) { decoder, info, _ ->
@@ -58,76 +78,141 @@ suspend fun loadBitmap(context: Context, uri: Uri): Bitmap? = withContext(Dispat
     null
 }
 
+/** Longest-edge target size for [res] applied to a [w]x[h] source (never upscales). */
+internal fun targetSize(w: Int, h: Int, res: ExportResolution): Pair<Int, Int> {
+    val cap = res.maxEdge
+    val largest = max(w, h)
+    if (cap == 0 || largest <= cap) return w to h
+    val scale = cap.toFloat() / largest
+    return max(1, (w * scale).roundToInt()) to max(1, (h * scale).roundToInt())
+}
+
+private fun scaledSource(src: Bitmap, w: Int, h: Int): Bitmap =
+    if (src.width == w && src.height == h) src
+    else Bitmap.createScaledBitmap(src, w, h, true)
+
 /**
- * Renders the full layer stack over [src] at the photo's own resolution.
- * The exact same generated AGSL program drives the live preview, so the
- * export matches the preview pixel-for-pixel (at higher resolution).
+ * Renders a layer stack over a source photo through one generated AGSL program.
+ * Built once, then [render] only updates the time uniform — cheap enough to
+ * drive GIF/video frame sequences. Falls back to a software raster pass if the
+ * GPU pipeline is unavailable. The same generated program drives the live
+ * preview, so exports match the preview pixel-for-pixel.
+ */
+class FrameRenderer(
+    src: Bitmap,
+    layers: List<LayerSpec>,
+    val width: Int,
+    val height: Int,
+) : AutoCloseable {
+
+    private val source: Bitmap = scaledSource(src, width, height)
+    private val ownsSource: Boolean = source !== src
+    private val active = layers.filter { it.opacity > 0f }
+    private val shader = RuntimeShader(LayerCompositor.generateSource(active.map { it.effect }))
+    private val paint = Paint().apply { this.shader = this@FrameRenderer.shader }
+
+    private val usage = HardwareBuffer.USAGE_GPU_SAMPLED_IMAGE or HardwareBuffer.USAGE_GPU_COLOR_OUTPUT
+    private val reader = ImageReader.newInstance(width, height, PixelFormat.RGBA_8888, 2, usage)
+    private val renderer = HardwareRenderer()
+    private val node = RenderNode("shaderExport")
+    private var gpuReady = false
+
+    val isPassThrough: Boolean = active.isEmpty()
+
+    init {
+        shader.setInputShader("uImage", BitmapShader(source, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP))
+        shader.setFloatUniform("uResolution", width.toFloat(), height.toFloat())
+        active.forEachIndexed { i, layer ->
+            layer.effect.params.forEachIndexed { j, p ->
+                shader.setFloatUniform("uL${i}P${j + 1}", layer.params.getOrElse(j) { p.default })
+            }
+            shader.setFloatUniform(
+                "uL${i}Center",
+                layer.centerX.coerceIn(0f, 1f),
+                layer.centerY.coerceIn(0f, 1f),
+            )
+            shader.setIntUniform("uL${i}Mode", layer.blend.ordinal)
+            shader.setFloatUniform("uL${i}Opacity", layer.opacity.coerceIn(0f, 1f))
+        }
+        try {
+            node.setPosition(0, 0, width, height)
+            renderer.setSurface(reader.surface)
+            renderer.setContentRoot(node)
+            gpuReady = true
+        } catch (t: Throwable) {
+            gpuReady = false
+        }
+    }
+
+    /** Renders one frame at [time] seconds. Caller owns the returned bitmap. */
+    fun render(time: Float): Bitmap {
+        if (isPassThrough) return source.copy(Bitmap.Config.ARGB_8888, false)
+        shader.setFloatUniform("uTime", time)
+        if (gpuReady) {
+            try {
+                return renderGpu()
+            } catch (t: Throwable) {
+                gpuReady = false
+            }
+        }
+        val out = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+        Canvas(out).drawRect(0f, 0f, width.toFloat(), height.toFloat(), paint)
+        return out
+    }
+
+    private fun renderGpu(): Bitmap {
+        val canvas = node.beginRecording(width, height)
+        canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), paint)
+        node.endRecording()
+        renderer.createRenderRequest().setWaitForPresent(true).syncAndDraw()
+        val image = reader.acquireNextImage() ?: error("ImageReader produced no frame")
+        image.use {
+            val buffer = it.hardwareBuffer ?: error("No hardware buffer")
+            val hardwareBitmap = Bitmap.wrapHardwareBuffer(buffer, null)
+                ?: error("Could not wrap hardware buffer")
+            val result = hardwareBitmap.copy(Bitmap.Config.ARGB_8888, false)
+            buffer.close()
+            return result
+        }
+    }
+
+    override fun close() {
+        try {
+            renderer.destroy()
+        } catch (_: Throwable) {
+        }
+        reader.close()
+        if (ownsSource) source.recycle()
+    }
+}
+
+/**
+ * Renders the layer stack over [src] at the requested export resolution.
+ * A 4K photo with ORIGINAL resolution yields a 4K result.
  */
 suspend fun applyLayerStackToBitmap(
     src: Bitmap,
     layers: List<LayerSpec>,
     time: Float,
+    resolution: ExportResolution = ExportResolution.ORIGINAL,
 ): Bitmap = withContext(Dispatchers.Default) {
-    val active = layers.filter { it.opacity > 0f }
-    if (active.isEmpty()) return@withContext src
-    val w = src.width
-    val h = src.height
-    val shader = RuntimeShader(LayerCompositor.generateSource(active.map { it.effect }))
-    shader.setInputShader("uImage", BitmapShader(src, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP))
-    shader.setFloatUniform("uResolution", w.toFloat(), h.toFloat())
-    shader.setFloatUniform("uTime", time)
-    active.forEachIndexed { i, layer ->
-        layer.effect.params.forEachIndexed { j, p ->
-            shader.setFloatUniform("uL${i}P${j + 1}", layer.params.getOrElse(j) { p.default })
-        }
-        shader.setFloatUniform("uL${i}Center", layer.centerX.coerceIn(0f, 1f), layer.centerY.coerceIn(0f, 1f))
-        shader.setIntUniform("uL${i}Mode", layer.blend.ordinal)
-        shader.setFloatUniform("uL${i}Opacity", layer.opacity.coerceIn(0f, 1f))
-    }
-    val paint = Paint().apply { this.shader = shader }
-
-    try {
-        renderOnGpu(w, h, paint)
-    } catch (t: Throwable) {
-        val out = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
-        Canvas(out).drawRect(0f, 0f, w.toFloat(), h.toFloat(), paint)
-        out
-    }
+    val (w, h) = targetSize(src.width, src.height, resolution)
+    FrameRenderer(src, layers, w, h).use { it.render(time) }
 }
 
-private fun renderOnGpu(w: Int, h: Int, paint: Paint): Bitmap {
-    val usage = HardwareBuffer.USAGE_GPU_SAMPLED_IMAGE or HardwareBuffer.USAGE_GPU_COLOR_OUTPUT
-    return ImageReader.newInstance(w, h, PixelFormat.RGBA_8888, 1, usage).use { reader ->
-        val renderer = HardwareRenderer()
-        try {
-            val node = RenderNode("shaderExport")
-            node.setPosition(0, 0, w, h)
-            val canvas = node.beginRecording(w, h)
-            canvas.drawRect(0f, 0f, w.toFloat(), h.toFloat(), paint)
-            node.endRecording()
-            renderer.setSurface(reader.surface)
-            renderer.setContentRoot(node)
-            renderer.createRenderRequest().setWaitForPresent(true).syncAndDraw()
-            val image = reader.acquireNextImage() ?: error("ImageReader produced no frame")
-            image.use {
-                val buffer = it.hardwareBuffer ?: error("No hardware buffer")
-                val hardwareBitmap = Bitmap.wrapHardwareBuffer(buffer, null)
-                    ?: error("Could not wrap hardware buffer")
-                val result = hardwareBitmap.copy(Bitmap.Config.ARGB_8888, false)
-                buffer.close()
-                result
-            }
-        } finally {
-            renderer.destroy()
-        }
-    }
-}
-
-suspend fun saveToGallery(context: Context, bitmap: Bitmap): Boolean = withContext(Dispatchers.IO) {
-    val name = "ShaderStudio_${System.currentTimeMillis()}.jpg"
+/** Saves a still image (JPEG or PNG) to the gallery under Pictures/Shader Studio. */
+suspend fun exportStill(
+    context: Context,
+    bitmap: Bitmap,
+    options: ExportOptions,
+): Boolean = withContext(Dispatchers.IO) {
+    val png = options.format == ExportFormat.PNG
+    val ext = if (png) "png" else "jpg"
+    val mime = if (png) "image/png" else "image/jpeg"
+    val name = "ShaderStudio_${System.currentTimeMillis()}.$ext"
     val values = ContentValues().apply {
         put(MediaStore.Images.Media.DISPLAY_NAME, name)
-        put(MediaStore.Images.Media.MIME_TYPE, "image/jpeg")
+        put(MediaStore.Images.Media.MIME_TYPE, mime)
         put(MediaStore.Images.Media.RELATIVE_PATH, Environment.DIRECTORY_PICTURES + "/Shader Studio")
         put(MediaStore.Images.Media.IS_PENDING, 1)
     }
@@ -135,8 +220,10 @@ suspend fun saveToGallery(context: Context, bitmap: Bitmap): Boolean = withConte
     val uri = resolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values)
         ?: return@withContext false
     try {
+        val q = if (options.quality == ExportQuality.MAX) 100 else 92
         val ok = resolver.openOutputStream(uri)?.use { stream ->
-            bitmap.compress(Bitmap.CompressFormat.JPEG, JPEG_QUALITY, stream)
+            if (png) bitmap.compress(Bitmap.CompressFormat.PNG, 100, stream)
+            else bitmap.compress(Bitmap.CompressFormat.JPEG, q, stream)
         } ?: false
         if (!ok) {
             resolver.delete(uri, null, null)

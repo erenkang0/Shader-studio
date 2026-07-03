@@ -19,6 +19,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -43,18 +45,24 @@ import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Done
+import androidx.compose.material.icons.rounded.KeyboardArrowLeft
+import androidx.compose.material.icons.rounded.KeyboardArrowRight
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material3.Button
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.LoadingIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -89,8 +97,14 @@ import com.shaderstudio.app.shaders.LayerCompositor
 import com.shaderstudio.app.shaders.LayerSpec
 import com.shaderstudio.app.shaders.ShaderEffect
 import com.shaderstudio.app.shaders.ShaderEffects
+import com.shaderstudio.app.util.ExportFormat
+import com.shaderstudio.app.util.ExportOptions
+import com.shaderstudio.app.util.ExportQuality
+import com.shaderstudio.app.util.ExportResolution
+import com.shaderstudio.app.util.GifExport
+import com.shaderstudio.app.util.VideoExport
 import com.shaderstudio.app.util.applyLayerStackToBitmap
-import com.shaderstudio.app.util.saveToGallery
+import com.shaderstudio.app.util.exportStill
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlin.random.Random
@@ -108,6 +122,18 @@ private class EffectLayer(val id: Int, initialEffect: ShaderEffect) {
         effect = e
         params.clear()
         params.addAll(e.params.map { it.default })
+    }
+
+    fun duplicate(newId: Int): EffectLayer {
+        val copy = EffectLayer(newId, effect)
+        copy.params.clear()
+        copy.params.addAll(params)
+        copy.blend = blend
+        copy.opacity = opacity
+        copy.visible = visible
+        copy.centerX = centerX
+        copy.centerY = centerY
+        return copy
     }
 }
 
@@ -135,8 +161,11 @@ fun EditorScreen(
 
     val structureKey = layers.joinToString("|") { it.effect.id }
     val compositeShader = remember(structureKey) {
-        if (layers.isEmpty()) null
-        else RuntimeShader(LayerCompositor.generateSource(layers.map { it.effect }))
+        // AGSL compiles at runtime; a malformed effect must not crash the editor.
+        runCatching {
+            if (layers.isEmpty()) null
+            else RuntimeShader(LayerCompositor.generateSource(layers.map { it.effect }))
+        }.getOrNull()
     }
 
     // Continuous clock with a random start so animated effects differ per session.
@@ -153,6 +182,11 @@ fun EditorScreen(
     }
 
     var saving by remember { mutableStateOf(false) }
+    var exportProgress by remember { mutableFloatStateOf(0f) }
+    var showExportSheet by remember { mutableStateOf(false) }
+    var exportFormat by remember { mutableStateOf(ExportFormat.JPEG) }
+    var exportResolution by remember { mutableStateOf(ExportResolution.ORIGINAL) }
+    var exportQuality by remember { mutableStateOf(ExportQuality.HIGH) }
     val imageBitmap = remember(bitmap) { bitmap.asImageBitmap() }
     val savedMsg = stringResource(R.string.saved_toast)
     val failMsg = stringResource(R.string.save_failed)
@@ -161,6 +195,46 @@ fun EditorScreen(
         if (layers.size >= LayerCompositor.MAX_LAYERS) return
         layers.add(EffectLayer(nextId++, effect))
         selectedLayerIndex = layers.lastIndex
+    }
+
+    fun runExport() {
+        if (saving) return
+        val specs = layers.filter { it.visible }.map {
+            LayerSpec(
+                effect = it.effect,
+                params = it.params.toList(),
+                blend = it.blend,
+                opacity = it.opacity,
+                centerX = it.centerX,
+                centerY = it.centerY,
+            )
+        }
+        val options = ExportOptions(exportFormat, exportResolution, exportQuality)
+        showExportSheet = false
+        scope.launch {
+            saving = true
+            exportProgress = 0f
+            try {
+                val ok = when (exportFormat) {
+                    ExportFormat.JPEG, ExportFormat.PNG -> {
+                        val rendered = applyLayerStackToBitmap(
+                            bitmap, specs, timeOffset + time, exportResolution,
+                        )
+                        exportStill(context, rendered, options)
+                    }
+                    ExportFormat.GIF ->
+                        GifExport.exportGif(context, bitmap, specs, options) { exportProgress = it }
+                    ExportFormat.MP4 ->
+                        VideoExport.exportVideo(context, bitmap, specs, options) { exportProgress = it }
+                }
+                Toast.makeText(context, if (ok) savedMsg else failMsg, Toast.LENGTH_SHORT).show()
+            } catch (t: Throwable) {
+                Toast.makeText(context, failMsg, Toast.LENGTH_SHORT).show()
+            } finally {
+                saving = false
+                exportProgress = 0f
+            }
+        }
     }
 
     Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
@@ -201,35 +275,15 @@ fun EditorScreen(
                     }
                 }
                 Button(
-                    onClick = {
-                        if (saving) return@Button
-                        scope.launch {
-                            saving = true
-                            try {
-                                val specs = layers.filter { it.visible }.map {
-                                    LayerSpec(
-                                        effect = it.effect,
-                                        params = it.params.toList(),
-                                        blend = it.blend,
-                                        opacity = it.opacity,
-                                        centerX = it.centerX,
-                                        centerY = it.centerY,
-                                    )
-                                }
-                                val rendered = applyLayerStackToBitmap(bitmap, specs, timeOffset + time)
-                                val ok = saveToGallery(context, rendered)
-                                Toast.makeText(context, if (ok) savedMsg else failMsg, Toast.LENGTH_SHORT).show()
-                            } catch (t: Throwable) {
-                                Toast.makeText(context, failMsg, Toast.LENGTH_SHORT).show()
-                            } finally {
-                                saving = false
-                            }
-                        }
-                    },
+                    onClick = { if (!saving) showExportSheet = true },
                     shape = RoundedCornerShape(18.dp),
                 ) {
                     if (saving) {
                         LoadingIndicator(modifier = Modifier.size(22.dp))
+                        if (exportProgress > 0f) {
+                            Spacer(Modifier.width(8.dp))
+                            Text("${(exportProgress * 100).toInt()}%")
+                        }
                     } else {
                         Icon(Icons.Rounded.Done, contentDescription = null, modifier = Modifier.size(18.dp))
                         Spacer(Modifier.width(6.dp))
@@ -527,16 +581,55 @@ fun EditorScreen(
                                 )
                             }
                             Slider(value = l.opacity, onValueChange = { l.opacity = it })
+                            val idx = layers.indexOf(l)
                             Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text(
-                                    stringResource(R.string.layer_visible),
-                                    style = MaterialTheme.typography.labelLarge,
-                                )
-                                Spacer(Modifier.width(10.dp))
+                                IconButton(
+                                    onClick = {
+                                        if (idx > 0) {
+                                            layers.add(idx - 1, layers.removeAt(idx))
+                                            selectedLayerIndex = idx - 1
+                                        }
+                                    },
+                                    enabled = idx > 0,
+                                ) {
+                                    Icon(
+                                        Icons.Rounded.KeyboardArrowLeft,
+                                        contentDescription = stringResource(R.string.move_down),
+                                    )
+                                }
+                                IconButton(
+                                    onClick = {
+                                        if (idx in 0 until layers.lastIndex) {
+                                            layers.add(idx + 1, layers.removeAt(idx))
+                                            selectedLayerIndex = idx + 1
+                                        }
+                                    },
+                                    enabled = idx in 0 until layers.lastIndex,
+                                ) {
+                                    Icon(
+                                        Icons.Rounded.KeyboardArrowRight,
+                                        contentDescription = stringResource(R.string.move_up),
+                                    )
+                                }
+                                TextButton(
+                                    onClick = {
+                                        if (layers.size < LayerCompositor.MAX_LAYERS && idx >= 0) {
+                                            layers.add(idx + 1, l.duplicate(nextId++))
+                                            selectedLayerIndex = idx + 1
+                                        }
+                                    },
+                                    enabled = layers.size < LayerCompositor.MAX_LAYERS,
+                                ) {
+                                    Icon(Icons.Rounded.Add, contentDescription = null, modifier = Modifier.size(16.dp))
+                                    Spacer(Modifier.width(4.dp))
+                                    Text(stringResource(R.string.duplicate_layer))
+                                }
+                                Spacer(Modifier.weight(1f))
                                 Switch(checked = l.visible, onCheckedChange = { l.visible = it })
+                            }
+                            Row(verticalAlignment = Alignment.CenterVertically) {
                                 Spacer(Modifier.weight(1f))
                                 TextButton(onClick = {
-                                    val idx = layers.indexOf(l)
                                     if (idx >= 0) layers.removeAt(idx)
                                     selectedLayerIndex = (selectedLayerIndex - 1).coerceAtLeast(0)
                                     if (layers.isEmpty()) panel = PanelMode.NONE
@@ -551,6 +644,129 @@ fun EditorScreen(
                 }
             }
         }
+
+        if (showExportSheet) {
+            ExportSheet(
+                format = exportFormat,
+                resolution = exportResolution,
+                quality = exportQuality,
+                onFormat = { exportFormat = it },
+                onResolution = { exportResolution = it },
+                onQuality = { exportQuality = it },
+                onExport = { runExport() },
+                onDismiss = { showExportSheet = false },
+            )
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
+@Composable
+private fun ExportSheet(
+    format: ExportFormat,
+    resolution: ExportResolution,
+    quality: ExportQuality,
+    onFormat: (ExportFormat) -> Unit,
+    onResolution: (ExportResolution) -> Unit,
+    onQuality: (ExportQuality) -> Unit,
+    onExport: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
+        Column(Modifier.padding(start = 20.dp, end = 20.dp, bottom = 28.dp)) {
+            Text(
+                stringResource(R.string.export_title),
+                style = MaterialTheme.typography.headlineSmall,
+            )
+            Spacer(Modifier.height(16.dp))
+
+            OptionGroup(stringResource(R.string.export_format)) {
+                ChoiceChip("JPEG", format == ExportFormat.JPEG) { onFormat(ExportFormat.JPEG) }
+                ChoiceChip("PNG", format == ExportFormat.PNG) { onFormat(ExportFormat.PNG) }
+                ChoiceChip("GIF", format == ExportFormat.GIF) { onFormat(ExportFormat.GIF) }
+                ChoiceChip("MP4", format == ExportFormat.MP4) { onFormat(ExportFormat.MP4) }
+            }
+
+            Spacer(Modifier.height(14.dp))
+            OptionGroup(stringResource(R.string.export_resolution)) {
+                ChoiceChip(stringResource(R.string.res_original), resolution == ExportResolution.ORIGINAL) {
+                    onResolution(ExportResolution.ORIGINAL)
+                }
+                ChoiceChip("4K", resolution == ExportResolution.UHD_4K) { onResolution(ExportResolution.UHD_4K) }
+                ChoiceChip("2K", resolution == ExportResolution.QHD_2K) { onResolution(ExportResolution.QHD_2K) }
+                ChoiceChip("1080p", resolution == ExportResolution.FHD_1080) { onResolution(ExportResolution.FHD_1080) }
+            }
+
+            val showQuality = format == ExportFormat.JPEG || format == ExportFormat.MP4
+            if (showQuality) {
+                Spacer(Modifier.height(14.dp))
+                OptionGroup(stringResource(R.string.export_quality)) {
+                    ChoiceChip(stringResource(R.string.quality_high), quality == ExportQuality.HIGH) {
+                        onQuality(ExportQuality.HIGH)
+                    }
+                    ChoiceChip(stringResource(R.string.quality_max), quality == ExportQuality.MAX) {
+                        onQuality(ExportQuality.MAX)
+                    }
+                }
+            }
+
+            val hint = when (format) {
+                ExportFormat.GIF -> stringResource(R.string.export_gif_hint)
+                ExportFormat.MP4 -> stringResource(R.string.export_mp4_hint)
+                else -> stringResource(R.string.export_still_hint)
+            }
+            Spacer(Modifier.height(14.dp))
+            Text(
+                hint,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+
+            Spacer(Modifier.height(18.dp))
+            Button(
+                onClick = onExport,
+                modifier = Modifier.fillMaxWidth().height(56.dp),
+                shape = RoundedCornerShape(18.dp),
+            ) {
+                Icon(Icons.Rounded.Done, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(8.dp))
+                Text(stringResource(R.string.export_action), style = MaterialTheme.typography.titleMedium)
+            }
+        }
+    }
+}
+
+@Composable
+private fun OptionGroup(label: String, content: @Composable androidx.compose.foundation.layout.RowScope.() -> Unit) {
+    Text(
+        label,
+        style = MaterialTheme.typography.labelMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+    Spacer(Modifier.height(8.dp))
+    Row(
+        modifier = Modifier.horizontalScroll(rememberScrollState()),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        content = content,
+    )
+}
+
+@Composable
+private fun ChoiceChip(label: String, selected: Boolean, onClick: () -> Unit) {
+    Surface(
+        shape = RoundedCornerShape(14.dp),
+        color = if (selected) MaterialTheme.colorScheme.primary
+        else MaterialTheme.colorScheme.surfaceContainerHigh,
+        modifier = Modifier.clip(RoundedCornerShape(14.dp)).clickable(onClick = onClick),
+    ) {
+        Text(
+            label,
+            style = MaterialTheme.typography.labelLarge,
+            color = if (selected) MaterialTheme.colorScheme.onPrimary
+            else MaterialTheme.colorScheme.onSurface,
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
+        )
     }
 }
 

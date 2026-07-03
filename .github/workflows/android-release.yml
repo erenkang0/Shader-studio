@@ -33,46 +33,43 @@ jobs:
           ./gradlew assembleRelease --stacktrace
 
       - name: Collect APK
-        run: cp app/build/outputs/apk/release/app-release.apk ShaderStudio-v1.2.0.apk
+        run: cp app/build/outputs/apk/release/app-release.apk ShaderStudio-v1.3.0.apk
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: ShaderStudio-APK
-          path: ShaderStudio-v1.2.0.apk
+          path: ShaderStudio-v1.3.0.apk
 
       - name: Create / update GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.2.0
-          name: Shader Studio v1.2.0
+          tag_name: v1.3.0
+          name: Shader Studio v1.3.0
           make_latest: true
           body: |
-            # Shader Studio v1.2.0 🎨
+            # Shader Studio v1.3.0 🎨
 
             GPU-powered photo editor for **Android 14+** built with **Material 3 Expressive** and **AGSL runtime shaders**.
 
-            ## New in 1.2.0
-            - **Layers** — stack up to 5 effect layers over your photo, Procreate-style
-            - **26 blend modes** — the full Procreate set (Multiply, Screen, Overlay, Soft/Hard/Vivid/Linear/Pin Light, Hard Mix, Color Burn/Dodge, Difference, Exclusion, Subtract, Divide, Hue, Saturation, Color, Luminosity…), with per-layer opacity and visibility
-            - **Draggable effect position** — move the center of Kaleidoscope, Swirl, Lens, Ripple, Little Planet, Tilt Shift focus and more by dragging on the photo
-            - **Full-resolution export** — effects render at the photo's own resolution (up to 8192 px) at JPEG quality 98; preview and export share the exact same generated shader
-            - Bigger preview, tap the selected effect again for its settings, tap the selected layer again for blend controls
-            - Home screen liquid animation opens differently on every launch
+            ## New in 1.3.0
+            - **50 new fluid & fantasy effects** — fire, plasma, lightning, galaxy, portals, aurora, caustics, snow, rain, bubbles, marble ink, liquid chrome, holograms, cyber grids, force fields, fractal zoom and more (108 effects total)
+            - **GIF export** — looping animated GIF (pure-Kotlin GIF89a encoder)
+            - **Video export** — high-quality H.264 MP4 (MediaCodec)
+            - **Export options sheet** — pick Format (JPEG · PNG · GIF · MP4), Resolution (Original · 4K · 2K · 1080p) and Quality; a 4K photo renders at 4K
+            - **Layer tools** — reorder and duplicate layers
+            - Runtime shader safety guard so a bad effect never crashes the editor
 
-            ## 58 shader effects
-            **Poster & print:** Dot Matrix, Print Press, Pop Dots, Linescreen, Sketch, Bit Dither, Poster Pop, Duotone, Toon, Watercolor, Oil Flow
-            **Glass & distortion:** Fluted Glass, Rain Glass, Stained Glass, Lens, Swirl, Ripple, Flag Wave, Heat Haze, Underwater, Time Smear, Kaleidoscope, Quad Mirror, Mirror, Little Planet
-            **Retro & tape:** VHS, CRT, Old Film, Film Fade, Game Boy, Night Vision, Lomo, Negative, Solarize, Infrared, Thermal
-            **Glitch & chroma:** Glitch, Scan Slice, Pixel Sort, Chroma Wave, Chroma Zoom, Anaglyph, Double Ghost
-            **Mosaic & pixel:** Mosaic, Hex Pixel, Tri Mosaic, Weave, Emboss
-            **Light & overlay:** Liquid Sky, Aurora, Matrix Rain, Sparkle, Bloom, Prism Leak, Neon Edge, Motion Blur, Spin Blur, Tilt Shift
+            ## Since 1.2.0
+            - Up to 5 layers, 26 Procreate blend modes, draggable effect position, big preview
 
-            13 animated effects render with a live time uniform; every effect has
-            up to three adjustable parameters.
+            ## 108 shader effects
+            58 classic looks (dot matrix, fluted glass, glitch, VHS, duotone, halftone, sketch, kaleidoscope, tilt-shift, CRT…) plus 50 fluid/fantasy effects (inferno, plasma orb, galaxy, portal, aurora, ocean waves, snowfall, caustics, flow field, marble ink, liquid chrome, hologram, cyber grid, force field, fractal zoom…).
+
+            30 animated effects render with a live time uniform; every effect has up to three adjustable parameters and many are draggable.
 
             ## Install
-            Download `ShaderStudio-v1.2.0.apk` below and install it (requires Android 14 or newer).
+            Download `ShaderStudio-v1.3.0.apk` below and install it (requires Android 14 or newer).
 
-            All effects render in real time on the GPU and export at full resolution to your gallery.
-          files: ShaderStudio-v1.2.0.apk
+            Stills render at your photo's own resolution (4K stays 4K); animations export as looping GIF or H.264 video straight to your gallery.
+          files: ShaderStudio-v1.3.0.apk

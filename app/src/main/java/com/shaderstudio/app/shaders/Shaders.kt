@@ -2002,5 +2002,5 @@ object ShaderEffects {
             accentStart = 0xFFD5BDAF,
             accentEnd = 0xFF6B4F3A,
         ),
-    )
+    ) + FantasyEffects1.all + FantasyEffects2.all
 }

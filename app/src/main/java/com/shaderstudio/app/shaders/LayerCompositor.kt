@@ -54,11 +54,14 @@ object LayerCompositor {
 
     const val MAX_LAYERS = 5
 
-    /** Helper functions defined inside effect bodies that must be renamed per layer. */
-    private val helperNames = listOf(
-        "main", "hue2rgb", "hueColor", "lumAt", "toonLum",
-        "dotMask", "gridSample", "bayer2", "leakHue",
-    )
+    /**
+     * Matches top-level function definitions inside an effect body (e.g.
+     * "float3 pal(", "half4 main("). Every defined function is renamed with a
+     * per-layer prefix so the same effect can appear on several layers and
+     * different effects never collide. Calls to the shared NOISE_LIB
+     * functions are untouched because their definitions live outside bodies.
+     */
+    private val functionDef = Regex("""\b(?:float[234]?|half4|int)\s+([A-Za-z_]\w*)\s*\(""")
 
     /** PDF/Photoshop-spec blend math shared by all generated programs. */
     private const val BLEND_LIB = """
@@ -174,7 +177,8 @@ float3 blendPx(float3 b, float3 s, int mode) {
                 .replace("uParam2", "uL${i}P2")
                 .replace("uParam3", "uL${i}P3")
                 .replace("uCenter", "uL${i}Center")
-            for (h in helperNames) {
+            val defined = functionDef.findAll(body).map { it.groupValues[1] }.toSet()
+            for (h in defined) {
                 body = body.replace(Regex("\\b$h\\b"), "l${i}_$h")
             }
             sb.append(body)

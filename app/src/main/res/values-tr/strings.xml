@@ -20,4 +20,18 @@
     <string name="delete_layer">Katmanı sil</string>
     <string name="no_layers_hint">Efekt uygulamak için bir katman ekle</string>
     <string name="drag_hint">Efekti taşımak için fotoğrafın üzerinde sürükle</string>
+    <string name="duplicate_layer">Katmanı çoğalt</string>
+    <string name="move_up">Yukarı taşı</string>
+    <string name="move_down">Aşağı taşı</string>
+    <string name="export_title">Dışa aktar</string>
+    <string name="export_format">Format</string>
+    <string name="export_resolution">Çözünürlük</string>
+    <string name="export_quality">Kalite</string>
+    <string name="res_original">Orijinal</string>
+    <string name="quality_high">Yüksek</string>
+    <string name="quality_max">Maksimum</string>
+    <string name="export_action">Dışa aktar</string>
+    <string name="export_still_hint">Fotoğrafın çözünürlüğünde işlenir (4K, 4K kalır). Resimler/Shader Studio\'ya kaydedilir.</string>
+    <string name="export_gif_hint">Animasyonun döngülü GIF\'i (~3sn). Resimler/Shader Studio\'ya kaydedilir.</string>
+    <string name="export_mp4_hint">Animasyonun yüksek kaliteli H.264 videosu (~6sn). Filmler/Shader Studio\'ya kaydedilir.</string>
 </resources>

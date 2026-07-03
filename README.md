@@ -4,7 +4,11 @@ GPU-powered photo editor for **Android 14+**, built with **Jetpack Compose**, **
 
 > 📦 **Download:** grab the latest APK from the [Releases](../../releases) page.
 
-## ✨ 58 Effects
+## ✨ 108 Effects
+
+58 classic looks (below) plus **50 fluid & fantasy effects**: Inferno, Plasma Orb, Electric Storm, Solar Flare, Ember Dust, Neon Pulse, Aura Glow, Portal, Warp Speed, Galaxy, Ocean Waves, Rainfall, Snowfall, Frost, Mist, Thunder Sky, Bubbles, Whirlpool, Caustic Pool, Monsoon, Fairy Dust, Dream Blur, Astral, Spirit Veil, Enchanted, Moonlight, Golden Hour, Stardust Trail, Crystal Prism, Iridescence, Flow Field, Marble Ink, Liquid Chrome, Oil Slick, Ink Bleed, Silk Waves, Lava Lamp, Melting, Turbulence, Zen Ripples, Hologram, Cyber Grid, Data Stream, Force Field, Teleport, Radar Sweep, Glitch Storm, X-Ray, Comic Noir, Fractal Zoom.
+
+### Classic pack (58)
 
 | Effect | Look | Animated |
 | --- | --- | --- |
@@ -68,6 +72,16 @@ GPU-powered photo editor for **Android 14+**, built with **Jetpack Compose**, **
 | **Film Fade** | Lifted-black matte + grain | ✅ |
 
 Every effect exposes up to three parameters driven by Material 3 sliders, previews in real time via `RenderEffect` + `RuntimeShader`, and exports at the photo's own resolution (up to 8192 px, JPEG 98) through a GPU pass (`HardwareRenderer` + `ImageReader`) straight into your gallery (`Pictures/Shader Studio`).
+
+## 🎬 Export: stills, GIF & video
+
+Tap **Save** to open the export sheet:
+
+- **Format** — JPEG · PNG (lossless) · **GIF** (looping) · **MP4** (H.264 video)
+- **Resolution** — Original (a 4K photo renders at 4K, an 8K photo at 8K) · 4K · 2K · 1080p
+- **Quality** — High / Maximum for JPEG and MP4
+
+Stills go through the GPU pass at the photo's own resolution (`util/ImageIO.kt`, `FrameRenderer`). Animated effects are rendered frame-by-frame from the same `FrameRenderer`: GIF via a pure-Kotlin GIF89a encoder (NeuQuant quantization + LZW, `util/GifEncoder.kt`) and MP4 via `MediaCodec` + `MediaMuxer` (`util/VideoEncoder.kt`). Everything saves to `Pictures/Shader Studio` (stills, GIF) or `Movies/Shader Studio` (video).
 
 ## 🧅 Layers & Blend Modes
 

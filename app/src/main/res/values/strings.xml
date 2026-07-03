@@ -20,4 +20,18 @@
     <string name="delete_layer">Delete layer</string>
     <string name="no_layers_hint">Add a layer to start applying effects</string>
     <string name="drag_hint">Drag on the photo to move the effect</string>
+    <string name="duplicate_layer">Duplicate layer</string>
+    <string name="move_up">Move up</string>
+    <string name="move_down">Move down</string>
+    <string name="export_title">Export</string>
+    <string name="export_format">Format</string>
+    <string name="export_resolution">Resolution</string>
+    <string name="export_quality">Quality</string>
+    <string name="res_original">Original</string>
+    <string name="quality_high">High</string>
+    <string name="quality_max">Maximum</string>
+    <string name="export_action">Export</string>
+    <string name="export_still_hint">Rendered at your photo\'s resolution (4K stays 4K). Saved to Pictures/Shader Studio.</string>
+    <string name="export_gif_hint">Looping GIF (~3s) of the animation. Saved to Pictures/Shader Studio.</string>
+    <string name="export_mp4_hint">High-quality H.264 video (~6s) of the animation. Saved to Movies/Shader Studio.</string>
 </resources>
